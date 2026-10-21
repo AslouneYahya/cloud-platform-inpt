@@ -122,8 +122,12 @@ public class VmService {
     private void triggerAsyncProvisioning(UUID vmId) {
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
+                // Wait briefly for outer @Transactional to commit to DB
+                Thread.sleep(1000);
+
                 Vm vm = vmRepository.findById(vmId).orElse(null);
                 if (vm == null || vm.getStatus() == VmStatus.TERMINATED) {
+                    log.warn("Async provisioning canceled: VM not found or already terminated (id={})", vmId);
                     return;
                 }
 
