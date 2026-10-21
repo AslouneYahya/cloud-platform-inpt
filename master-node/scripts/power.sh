@@ -27,12 +27,16 @@ fi
 
 case "$ACTION" in
     start)
+        # Simulate realistic VM BIOS/Kernel boot sequence on physical hardware
+        sleep 3
         sed -i 's/^STATUS=.*/STATUS=RUNNING/' "$CONF_FILE"
         echo "STATUS=SUCCESS"
         echo "STATE=RUNNING"
         echo "MESSAGE=VM ${VM_ID} powered on."
         ;;
     stop)
+        # Simulate ACPI graceful shutdown sequence
+        sleep 2.5
         sed -i 's/^STATUS=.*/STATUS=STOPPED/' "$CONF_FILE"
         echo "STATUS=SUCCESS"
         echo "STATE=STOPPED"
