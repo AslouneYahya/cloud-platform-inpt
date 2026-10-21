@@ -314,26 +314,26 @@ export default function VmManager() {
                   <button
                     onClick={() => handleStop(vm.id)}
                     disabled={actionLoadingId === vm.id}
-                    style={{ flex: 1, padding: '0.45rem', backgroundColor: '#fff', border: `1px solid ${BORDER_COLOR}`, borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600', color: '#4a5568' }}
+                    style={{ flex: 1, padding: '0.45rem', backgroundColor: actionLoadingId === vm.id ? '#edf2f7' : '#fff', border: `1px solid ${BORDER_COLOR}`, borderRadius: '6px', fontSize: '0.8rem', cursor: actionLoadingId === vm.id ? 'wait' : 'pointer', fontWeight: '600', color: '#4a5568' }}
                   >
-                    Arrêter
+                    {actionLoadingId === vm.id ? '⏳ Arrêt en cours...' : 'Arrêter'}
                   </button>
                 )}
                 {vm.status === 'STOPPED' && (
                   <button
                     onClick={() => handleStart(vm.id)}
                     disabled={actionLoadingId === vm.id}
-                    style={{ flex: 1, padding: '0.45rem', backgroundColor: SUCCESS_GREEN, color: '#fff', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600' }}
+                    style={{ flex: 1, padding: '0.45rem', backgroundColor: actionLoadingId === vm.id ? '#a5d6a7' : SUCCESS_GREEN, color: '#fff', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: actionLoadingId === vm.id ? 'wait' : 'pointer', fontWeight: '600' }}
                   >
-                    Démarrer
+                    {actionLoadingId === vm.id ? '⏳ Démarrage en cours...' : 'Démarrer'}
                   </button>
                 )}
                 <button
                   onClick={() => handleDelete(vm.id, vm.name)}
                   disabled={actionLoadingId === vm.id}
-                  style={{ padding: '0.45rem 0.85rem', backgroundColor: '#fff', border: `1px solid #fed7d7`, borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600', color: DANGER_RED }}
+                  style={{ padding: '0.45rem 0.85rem', backgroundColor: '#fff', border: `1px solid #fed7d7`, borderRadius: '6px', fontSize: '0.8rem', cursor: actionLoadingId === vm.id ? 'wait' : 'pointer', fontWeight: '600', color: DANGER_RED }}
                 >
-                  Supprimer
+                  {actionLoadingId === vm.id ? '⏳ ...' : 'Supprimer'}
                 </button>
               </div>
             </div>
