@@ -7,9 +7,15 @@ import ma.inpt.cloud.vm.VmRepository;
 import ma.inpt.cloud.vm.VmStatus;
 import ma.inpt.cloud.vm.dto.CreateVmRequest;
 import ma.inpt.cloud.vm.dto.VmResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
@@ -33,6 +39,18 @@ public class VmService {
 
     private final VmRepository vmRepository;
     private final Random random = new Random();
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+
+    @Value("${cloud.master-node.url:http://192.168.1.50:5000}")
+    private String masterNodeUrl;
+
+    @Value("${cloud.master-node.api-key:inpt-cluster-secret-2026}")
+    private String masterNodeApiKey;
+
+    @Value("${cloud.master-node.enabled:false}")
+    private boolean masterNodeEnabled;
 
     /**
      * Creates and provisions a new Virtual Machine.
@@ -98,23 +116,25 @@ public class VmService {
 
     /**
      * Executes real asynchronous provisioning in a background thread.
-     * Takes ~6 seconds to simulate image decompression, DHCP IP binding, and SSH startup.
+     * If masterNodeEnabled=true, dispatches request to the Raspberry Pi listener.
+     * Otherwise, simulates deployment steps on local hardware.
      */
     private void triggerAsyncProvisioning(UUID vmId) {
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
-                // Step 1: Communication with Master Node (Raspberry Pi)
-                Thread.sleep(3000);
+                Vm vm = vmRepository.findById(vmId).orElse(null);
+                if (vm == null || vm.getStatus() == VmStatus.TERMINATED) {
+                    return;
+                }
 
-                // Step 2: Slave allocation and network configuration
-                Thread.sleep(3500);
+                if (masterNodeEnabled) {
+                    log.info("Dispatching VM provisioning to Raspberry Pi Master Node at {}/vms", masterNodeUrl);
+                    callMasterNodeProvisioning(vm);
+                } else {
+                    // Simulation mode (Raspberry Pi offline)
+                    Thread.sleep(3000);
+                    Thread.sleep(3500);
 
-                vmRepository.findById(vmId).ifPresent(vm -> {
-                    if (vm.getStatus() == VmStatus.TERMINATED) {
-                        return; // User canceled/deleted while provisioning
-                    }
-
-                    // Resource limit verification
                     if (vm.getRamMb() > 4096) {
                         vm.setStatus(VmStatus.FAILED);
                         vm.setErrorMessage("Ressources mémoire insuffisantes sur les nœuds esclaves.");
@@ -122,7 +142,6 @@ public class VmService {
                         return;
                     }
 
-                    // Success: assign IP and node
                     int hostPart = 100 + random.nextInt(150);
                     String assignedIp = "192.168.1." + hostPart;
                     int nodeIndex = 1 + random.nextInt(3);
@@ -132,22 +151,75 @@ public class VmService {
                     vm.setNodeId(assignedNode);
                     vm.setStatus(VmStatus.RUNNING);
                     vm.setErrorMessage(null);
-
                     vmRepository.save(vm);
-                    log.info("Background provisioning complete for vmId={}: now RUNNING on {} ({})",
+                    log.info("Simulation provisioning complete for vmId={}: now RUNNING on {} ({})",
                             vmId, assignedNode, assignedIp);
-                });
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Exception ex) {
                 log.error("Provisioning failure in background for vmId={}", vmId, ex);
-                vmRepository.findById(vmId).ifPresent(vm -> {
-                    vm.setStatus(VmStatus.FAILED);
-                    vm.setErrorMessage("Erreur de déploiement: " + ex.getMessage());
-                    vmRepository.save(vm);
+                vmRepository.findById(vmId).ifPresent(v -> {
+                    v.setStatus(VmStatus.FAILED);
+                    v.setErrorMessage("Erreur de déploiement: " + ex.getMessage());
+                    vmRepository.save(v);
                 });
             }
         });
+    }
+
+    private void callMasterNodeProvisioning(Vm vm) throws Exception {
+        String jsonPayload = String.format("""
+            {
+              "vm_id": "%s",
+              "name": "%s",
+              "os": "%s",
+              "cpu": %d,
+              "ram_mb": %d,
+              "disk_gb": %d,
+              "open_ports": [%s]
+            }
+            """,
+            vm.getId(),
+            vm.getName(),
+            vm.getOs(),
+            vm.getCpu(),
+            vm.getRamMb(),
+            vm.getDiskGb(),
+            vm.getFirewallRules() != null ? vm.getFirewallRules() : "22"
+        );
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(masterNodeUrl + "/vms"))
+                .header("Content-Type", "application/json")
+                .header("X-Cluster-Token", masterNodeApiKey)
+                .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
+                .timeout(Duration.ofSeconds(60))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() >= 200 && response.statusCode() < 300) {
+            log.info("Master Node responded successfully: {}", response.body());
+            // Extract IP if present in JSON response
+            String body = response.body();
+            String ip = "192.168.1.100";
+            if (body.contains("\"ip_address\":") && !body.contains("\"ip_address\":null")) {
+                int start = body.indexOf("\"ip_address\":\"") + 14;
+                int end = body.indexOf("\"", start);
+                if (start > 13 && end > start) {
+                    ip = body.substring(start, end);
+                }
+            }
+
+            vm.setIpAddress(ip);
+            vm.setNodeId("rpi-master");
+            vm.setStatus(VmStatus.RUNNING);
+            vm.setErrorMessage(null);
+            vmRepository.save(vm);
+        } else {
+            throw new RuntimeException("Master Node HTTP " + response.statusCode() + ": " + response.body());
+        }
     }
 
     @Transactional(readOnly = true)

@@ -40,6 +40,13 @@ logging:
     ma.inpt.cloud: INFO
     org.springframework.security: INFO
 
+# ── Master Node Cluster Configuration ─────────────────────────────────────
+cloud:
+  master-node:
+    url: ${MASTER_NODE_URL:http://192.168.1.50:5000}
+    api-key: ${MASTER_NODE_API_KEY:inpt-cluster-secret-2026}
+    enabled: ${MASTER_NODE_ENABLED:false}
+
 ---
 # ── Seed profile ────────────────────────────────────────────────────────────
 # Activated by: SPRING_PROFILES_ACTIVE=seed
