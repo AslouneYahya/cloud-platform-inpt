@@ -34,7 +34,27 @@ Allocation asynchrone sur le cluster avec mécanisme automatique de rollback en 
 
 ---
 
-### 5. Infrastructure Conteneurisée (Docker Desktop)
+### 5. Intégration du Nœud Maître Physique (Raspberry Pi) & Cloudflare Zero Trust (Sprint 2)
+Interconnexion sécurisée entre le cluster Raspberry Pi local et le backend Cloud via **Cloudflare Tunnel** et **WARP** (contournement de l'isolation Wi-Fi et pare-feux).
+
+| Tunnel Cloudflare & Réplique Active (ARM64) | Routage Public vers le Listener (`localhost:5000`) |
+| :---: | :---: |
+| ![Cloudflare Tunnel Overview](screenshots/tunnel.png) | ![Cloudflare Routes](screenshots/cloudflare%20routes.png) |
+
+| Démon `cloudflared` & WARP Actifs sur Raspberry Pi | Mise à jour & Exécution des Scripts du Nœud Maître |
+| :---: | :---: |
+| ![Statut Cloudflared](screenshots/verifier%20cloudflare%20status%20healthy.jpeg) | ![Exécution Scripts Master Node](screenshots/executing%20scripts%20in%20master%20node.jpeg) |
+
+---
+
+### 6. Contrôle Hardware Réel & Rollback Automatique (Anti-OOM)
+Vérification des limites physiques de la Raspberry Pi (`free -m`) avant allocation : en cas de demande excessive (ex: 4 Go demandés alors que seulement 3.25 Go sont disponibles), le déploiement est rejeté avec un message d'erreur explicite et les ressources sont immédiatement libérées.
+
+![Gestion d'erreur et Rollback](screenshots/test-error%20deploiement.png)
+
+---
+
+### 7. Infrastructure Conteneurisée (Docker Desktop)
 Les 5 services interconnectés et orchestrés via Docker Compose (Nginx, Backend, Frontend, PostgreSQL, Redis).
 
 | Conteneurs en cours d'exécution | Images Docker construites |
@@ -47,6 +67,8 @@ Les 5 services interconnectés et orchestrés via Docker Compose (Nginx, Backend
 
 * **Reverse Proxy & TLS :** Nginx Alpine (HTTPS forcé, HSTS, CSP durci)
 * **Backend :** Spring Boot 3.3 (Java 21), Spring Security 6, Spring Data JPA
+* **Nœud Maître (Cluster Edge) :** Raspberry Pi 4 ARM64, FastAPI (Python 3), Scripts Bash de provisionnement, Systemd
+* **Tunnel Sécurisé & Zero Trust :** Cloudflare Tunnel (`cloudflared`), Cloudflare WARP (protocole QUIC / WireGuard)
 * **Frontend :** React 18, Vite, React Router, Axios
 * **Base de données :** PostgreSQL 16 (Identifiants UUIDv7)
 * **Gestion des sessions :** Redis 7 (Sessions distribuées, cookies `HttpOnly`, `Secure`, `SameSite=Lax`)
@@ -67,7 +89,7 @@ Accéder à l'application : **`https://localhost`**
 
 | Utilisateur | Email | Mot de passe | Statut |
 | :--- | :--- | :--- | :--- |
-| **Administrateur** | `admin@inpt.ac.ma` | `Admin1234!` | `ACTIVE` |
+| **Administrateur** | `admin@inpt.ma` | `Admin1234!` | `ACTIVE` |
 | **Étudiant (Demo)** | `demo@inpt.ma` | `Admin1234!` | `ACTIVE` |
 
 *(Pour réinitialiser les comptes de test : `docker compose run --rm -e SPRING_PROFILES_ACTIVE=seed backend`)*
