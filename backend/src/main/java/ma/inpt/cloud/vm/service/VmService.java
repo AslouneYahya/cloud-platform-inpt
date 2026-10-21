@@ -249,6 +249,11 @@ public class VmService {
         if (vm.getStatus() != VmStatus.RUNNING) {
             throw new IllegalStateException("Only RUNNING VMs can be stopped.");
         }
+
+        if (masterNodeEnabled) {
+            callMasterNodeAction(id, "stop");
+        }
+
         vm.setStatus(VmStatus.STOPPED);
         return VmResponse.fromEntity(vmRepository.save(vm));
     }
@@ -260,6 +265,11 @@ public class VmService {
         if (vm.getStatus() != VmStatus.STOPPED) {
             throw new IllegalStateException("Only STOPPED VMs can be started.");
         }
+
+        if (masterNodeEnabled) {
+            callMasterNodeAction(id, "start");
+        }
+
         vm.setStatus(VmStatus.RUNNING);
         return VmResponse.fromEntity(vmRepository.save(vm));
     }
@@ -268,8 +278,49 @@ public class VmService {
     public void deleteVm(UUID id, UUID ownerId) {
         Vm vm = vmRepository.findByIdAndOwnerId(id, ownerId)
                 .orElseThrow(() -> new IllegalArgumentException("Virtual Machine not found: " + id));
+
+        if (masterNodeEnabled) {
+            callMasterNodeDelete(id);
+        }
+
         vm.setStatus(VmStatus.TERMINATED);
         vmRepository.save(vm);
         log.info("VM {} terminated and resources cleaned up.", id);
+    }
+
+    private void callMasterNodeAction(UUID vmId, String action) {
+        try {
+            String jsonPayload = String.format("{\"action\":\"%s\"}", action);
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(masterNodeUrl + "/vms/" + vmId + "/action"))
+                    .header("Content-Type", "application/json")
+                    .header("X-Cluster-Token", masterNodeApiKey)
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
+                    .timeout(Duration.ofSeconds(15))
+                    .build();
+
+            log.info("Calling Master Node action '{}' for VM {}", action, vmId);
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            log.info("Master Node action response: HTTP {} - {}", response.statusCode(), response.body());
+        } catch (Exception e) {
+            log.error("Failed to execute action '{}' on Master Node for VM {}", action, vmId, e);
+        }
+    }
+
+    private void callMasterNodeDelete(UUID vmId) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(masterNodeUrl + "/vms/" + vmId))
+                    .header("X-Cluster-Token", masterNodeApiKey)
+                    .DELETE()
+                    .timeout(Duration.ofSeconds(15))
+                    .build();
+
+            log.info("Calling Master Node deprovision for VM {}", vmId);
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            log.info("Master Node delete response: HTTP {} - {}", response.statusCode(), response.body());
+        } catch (Exception e) {
+            log.error("Failed to delete VM {} on Master Node", vmId, e);
+        }
     }
 }
