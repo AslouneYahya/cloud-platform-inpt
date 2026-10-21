@@ -66,7 +66,7 @@ Type=simple
 TimeoutStartSec=10s
 Restart=always
 RestartSec=5s
-ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate --protocol http2 run --token $TOKEN
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate run --token $TOKEN
 
 [Install]
 WantedBy=multi-user.target
