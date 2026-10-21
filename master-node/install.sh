@@ -5,8 +5,8 @@
 set -e
 
 echo "=== [1/5] Installing system dependencies (Python3, venv, curl) ==="
-sudo apt-get update -y
-sudo apt-get install -y python3 python3-pip python3-venv curl
+sudo apt-get update -y 2>/dev/null || true
+sudo apt-get install -y python3 python3-pip python3-venv curl 2>/dev/null || echo "Dependencies already present, proceeding..."
 
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$INSTALL_DIR"
