@@ -29,6 +29,9 @@ services:
       SPRING_DATASOURCE_USERNAME: admin
       SPRING_DATASOURCE_PASSWORD: secret
       REDIS_HOST: redis
+      MASTER_NODE_URL: https://master.aslouneyahya.com
+      MASTER_NODE_ENABLED: "true"
+      MASTER_NODE_API_KEY: inpt-cluster-secret-2026
     depends_on:
       - db
       - redis
