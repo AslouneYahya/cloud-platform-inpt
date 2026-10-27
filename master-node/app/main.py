@@ -129,19 +129,19 @@ def get_health():
         return schemas.ClusterHealthResponse(
             node_name=data.get("node_name", config.CLUSTER_NODE_NAME),
             status=data.get("status", "HEALTHY"),
-            cpu_cores=int(data.get("cpu_cores", 4)),
-            ram_used_mb=int(data.get("ram_used_mb", 550)),
-            ram_total_mb=int(data.get("ram_total_mb", 3794)),
-            disk_free_gb=float(data.get("disk_free_gb", 10.0)),
-            active_vms=int(data.get("active_vms", 0)),
+            cpu_cores=dashboard.safe_int(data.get("cpu_cores"), 4),
+            ram_used_mb=dashboard.safe_int(data.get("ram_used_mb"), 550),
+            ram_total_mb=dashboard.safe_int(data.get("ram_total_mb"), 3794),
+            disk_free_gb=dashboard.safe_float(data.get("disk_free_gb"), 10.0),
+            active_vms=dashboard.safe_int(data.get("active_vms"), 0),
             node_model=data.get("node_model", "Raspberry Pi 4 Model B"),
             uptime=data.get("uptime", "up 3 hours"),
-            cpu_temp=float(data.get("cpu_temp", 50.0)) if data.get("cpu_temp") else None,
-            load_1m=data.get("load_1m", "0.08"),
-            ram_usage_pct=int(data.get("ram_usage_pct", 15)) if data.get("ram_usage_pct") else None,
-            disk_total_gb=float(data.get("disk_total_gb", 14.3)) if data.get("disk_total_gb") else None,
-            disk_used_gb=float(data.get("disk_used_gb", 4.0)) if data.get("disk_used_gb") else None,
-            disk_usage_pct=int(data.get("disk_usage_pct", 29)) if data.get("disk_usage_pct") else None
+            cpu_temp=dashboard.safe_float(data.get("cpu_temp"), 50.0),
+            load_1m=str(data.get("load_1m", "0.08")),
+            ram_usage_pct=dashboard.safe_int(data.get("ram_usage_pct"), 15),
+            disk_total_gb=dashboard.safe_float(data.get("disk_total_gb"), 14.3),
+            disk_used_gb=dashboard.safe_float(data.get("disk_used_gb"), 4.0),
+            disk_usage_pct=dashboard.safe_int(data.get("disk_usage_pct"), 29)
         )
     except Exception as e:
         logger.exception("Health check failed")

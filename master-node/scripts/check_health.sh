@@ -3,6 +3,8 @@
 # check_health.sh — Report precise hardware telemetry of the Raspberry Pi node
 # ==============================================================================
 set -eo pipefail
+export LC_ALL=C
+export LC_NUMERIC=C
 
 NODE_NAME=$(hostname)
 NODE_MODEL=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || echo "Raspberry Pi 4 Model B")

@@ -8,12 +8,16 @@ VMS_BASE_DIR = Path("/var/lib/inpt-cloud/vms")
 
 def safe_int(val: Any, default: int = 0) -> int:
     try:
+        if isinstance(val, str):
+            val = val.replace(",", ".").strip()
         return int(float(val))
     except (ValueError, TypeError):
         return default
 
 def safe_float(val: Any, default: float = 0.0) -> float:
     try:
+        if isinstance(val, str):
+            val = val.replace(",", ".").strip()
         return float(val)
     except (ValueError, TypeError):
         return default
