@@ -238,25 +238,52 @@ export default function VmManager() {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowModal(true)}
-          style={{
-            backgroundColor: INPT_BLUE,
-            color: '#fff',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '0.65rem 1.25rem',
-            fontWeight: '600',
-            fontSize: '0.9rem',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            boxShadow: '0 2px 6px rgba(0,51,102,0.2)'
-          }}
-        >
-          <span>+</span> Déployer une nouvelle VM
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <a
+            href="https://master.aslouneyahya.com/dashboard"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              backgroundColor: '#0f172a',
+              color: '#38bdf8',
+              border: '1px solid #1e293b',
+              borderRadius: '8px',
+              padding: '0.65rem 1.1rem',
+              fontWeight: '600',
+              fontSize: '0.85rem',
+              textDecoration: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            }}
+            title="Ouvrir le tableau de bord matériel Master Node sur le Raspberry Pi"
+          >
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
+            <span>📊 Dashboard Master Node</span>
+            <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>↗</span>
+          </a>
+
+          <button
+            onClick={() => setShowModal(true)}
+            style={{
+              backgroundColor: INPT_BLUE,
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '0.65rem 1.25rem',
+              fontWeight: '600',
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              boxShadow: '0 2px 6px rgba(0,51,102,0.2)'
+            }}
+          >
+            <span>+</span> Déployer une nouvelle VM
+          </button>
+        </div>
       </div>
 
       {error && (

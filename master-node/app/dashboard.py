@@ -1,0 +1,324 @@
+import json
+import os
+import subprocess
+from pathlib import Path
+from typing import Any, Dict, List
+
+VMS_BASE_DIR = Path("/var/lib/inpt-cloud/vms")
+
+def get_deployed_vms() -> List[Dict[str, Any]]:
+    """Scan the Raspberry Pi storage directory to list all provisioned instances."""
+    vms = []
+    if not VMS_BASE_DIR.exists():
+        return vms
+
+    for vm_folder in VMS_BASE_DIR.iterdir():
+        if not vm_folder.is_dir():
+            continue
+
+        conf_file = vm_folder / "vm.conf"
+        vm_data = {
+            "vm_id": vm_folder.name,
+            "name": vm_folder.name,
+            "os": "Linux ARM64",
+            "cpu": 1,
+            "ram_mb": 512,
+            "disk_gb": 10,
+            "ip": "Non attribue",
+            "ports": "22",
+            "status": "STOPPED",
+            "created_at": "-"
+        }
+
+        if conf_file.exists():
+            try:
+                for line in conf_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    if "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip().lower()
+                        v = v.strip()
+                        if k == "id": vm_data["vm_id"] = v
+                        elif k == "name": vm_data["name"] = v
+                        elif k == "os": vm_data["os"] = v
+                        elif k == "cpu": vm_data["cpu"] = int(v) if v.isdigit() else 1
+                        elif k == "ram_mb": vm_data["ram_mb"] = int(v) if v.isdigit() else 512
+                        elif k == "disk_gb": vm_data["disk_gb"] = int(v) if v.isdigit() else 10
+                        elif k == "ip": vm_data["ip"] = v
+                        elif k == "ports": vm_data["ports"] = v
+                        elif k == "status": vm_data["status"] = v
+                        elif k == "created_at": vm_data["created_at"] = v
+            except Exception:
+                pass
+
+        vms.append(vm_data)
+
+    # Sort newest first
+    vms.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
+    return vms
+
+def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> str:
+    """Render a standalone, high-performance web dashboard for the Master Node."""
+    node_name = health.get("node_name", "rpi-master")
+    status = health.get("status", "HEALTHY")
+    cpu_cores = health.get("cpu_cores", 4)
+    ram_used = health.get("ram_used_mb", 0)
+    ram_total = max(1, health.get("ram_total_mb", 4096))
+    ram_pct = int((ram_used / ram_total) * 100)
+    disk_free = health.get("disk_free_gb", 0.0)
+    active_count = len(vms)
+    running_count = sum(1 for v in vms if v.get("status") == "RUNNING")
+
+    # Generate VM table rows
+    rows_html = ""
+    if not vms:
+        rows_html = """
+        <tr>
+            <td colspan="7" class="px-6 py-12 text-center text-slate-400">
+                <div class="text-3xl mb-2">☁</div>
+                <div class="text-base font-semibold text-slate-300">Aucune machine virtuelle déployée sur ce nœud</div>
+                <div class="text-xs text-slate-500 mt-1">Les instances créées depuis l'interface centrale apparaîtront ici automatiquement.</div>
+            </td>
+        </tr>
+        """
+    else:
+        for vm in vms:
+            is_running = vm.get("status") == "RUNNING"
+            badge_class = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" if is_running else "bg-slate-700 text-slate-300 border-slate-600"
+            badge_dot = "bg-emerald-400 animate-pulse" if is_running else "bg-slate-500"
+            status_text = "En service (RUNNING)" if is_running else "Arrêtée (STOPPED)"
+
+            os_icon = "🐧"
+            os_name = vm.get("os", "Linux")
+            if "Ubuntu" in os_name:
+                os_icon = "🟠"
+            elif "Alpine" in os_name:
+                os_icon = "🏔️"
+            elif "Debian" in os_name:
+                os_icon = "🔴"
+
+            ram_display = f"{vm.get('ram_mb', 512)} Mo" if vm.get('ram_mb', 512) < 1024 else f"{vm.get('ram_mb', 512) / 1024:.1f} Go"
+
+            rows_html += f"""
+            <tr class="border-b border-slate-800 hover:bg-slate-850/50 transition">
+                <td class="px-6 py-4">
+                    <div class="flex items-center space-x-3">
+                        <span class="text-xl">{os_icon}</span>
+                        <div>
+                            <div class="font-bold text-white text-sm">{vm.get('name')}</div>
+                            <div class="text-xs text-slate-400">{os_name}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-6 py-4">
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border {badge_class}">
+                        <span class="w-2 h-2 rounded-full mr-1.5 {badge_dot}"></span>
+                        {status_text}
+                    </span>
+                </td>
+                <td class="px-6 py-4">
+                    <div class="font-mono text-sm text-sky-400 font-semibold">{vm.get('ip', '192.168.60.x')}</div>
+                    <div class="text-xs text-slate-500">Ports : {vm.get('ports', '22')}</div>
+                </td>
+                <td class="px-6 py-4">
+                    <div class="text-xs text-slate-300">
+                        <span class="font-semibold text-white">{vm.get('cpu')}</span> vCPU • 
+                        <span class="font-semibold text-white">{ram_display}</span> • 
+                        <span class="font-semibold text-white">{vm.get('disk_gb')} Go</span> SSD
+                    </div>
+                </td>
+                <td class="px-6 py-4 font-mono text-xs text-slate-400">
+                    <span title="{vm.get('vm_id')}">{vm.get('vm_id', '')[:8]}...{vm.get('vm_id', '')[-6:]}</span>
+                </td>
+                <td class="px-6 py-4 text-xs text-slate-400">
+                    {vm.get('created_at', '-')}
+                </td>
+                <td class="px-6 py-4 text-right">
+                    <code class="text-xs bg-slate-800 text-slate-300 px-2 py-1 rounded border border-slate-700">ssh root@{vm.get('ip', 'node')}</code>
+                </td>
+            </tr>
+            """
+
+    return f"""<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Master Node Dashboard — INPT Cloud Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {{
+            darkMode: 'class',
+            theme: {{
+                extend: {{
+                    colors: {{
+                        slate: {{
+                            850: '#131d31',
+                            950: '#070b14'
+                        }}
+                    }}
+                }}
+            }}
+        }}
+    </script>
+    <style>
+        @keyframes pulse-subtle {{
+            0%, 100% {{ opacity: 1; }}
+            50% {{ opacity: 0.6; }}
+        }}
+        .pulse-subtle {{ animation: pulse-subtle 3s infinite ease-in-out; }}
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased">
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
+                    <span class="text-xl">☁</span>
+                </div>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <h1 class="text-base font-bold text-white tracking-wide">INPT CLOUD PLATFORM</h1>
+                        <span class="bg-sky-500/10 text-sky-400 border border-sky-500/20 text-xs px-2 py-0.5 rounded-md font-semibold">Master Node</span>
+                    </div>
+                    <div class="text-xs text-slate-400">Cluster Orchestrator Daemon • Raspberry Pi 4 ARM64</div>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-4">
+                <div class="hidden sm:flex items-center space-x-2 bg-slate-800/80 border border-slate-700/60 rounded-lg px-3 py-1.5 text-xs text-slate-300">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="font-mono text-slate-200">{node_name}</span>
+                    <span class="text-slate-500">•</span>
+                    <span class="text-emerald-400 font-semibold">{status}</span>
+                </div>
+                <a href="/health" target="_blank" class="text-xs text-slate-400 hover:text-white transition flex items-center space-x-1 border border-slate-700 rounded-lg px-2.5 py-1.5">
+                    <span>API Health</span>
+                    <span class="text-slate-500">↗</span>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <!-- Cluster Node Telemetry Cards -->
+        <section>
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Télémétrie Matérielle du Nœud</h2>
+                <div class="text-xs text-slate-500 flex items-center space-x-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+                    <span>Actualisation automatique en temps réel</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Card 1: CPU -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 text-xs mb-3">
+                        <span class="font-semibold uppercase">Processeur (CPU)</span>
+                        <span class="text-base">💻</span>
+                    </div>
+                    <div class="text-2xl font-bold text-white mb-1 font-mono">{cpu_cores} Cœurs</div>
+                    <div class="text-xs text-slate-400 mb-3">ARM Cortex-A72 @ 1.80GHz</div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div class="bg-sky-500 h-1.5 rounded-full" style="width: 25%"></div>
+                    </div>
+                </div>
+
+                <!-- Card 2: RAM -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 text-xs mb-3">
+                        <span class="font-semibold uppercase">Mémoire Vive (RAM)</span>
+                        <span class="text-base">🧠</span>
+                    </div>
+                    <div class="text-2xl font-bold text-white mb-1 font-mono">{ram_used} <span class="text-sm font-normal text-slate-400">/ {ram_total} Mo</span></div>
+                    <div class="text-xs text-slate-400 mb-3">{ram_pct}% alloué au système & VMs</div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div class="bg-indigo-500 h-1.5 rounded-full" style="width: {ram_pct}%"></div>
+                    </div>
+                </div>
+
+                <!-- Card 3: Storage -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 text-xs mb-3">
+                        <span class="font-semibold uppercase">Stockage NVMe/SD</span>
+                        <span class="text-base">💾</span>
+                    </div>
+                    <div class="text-2xl font-bold text-white mb-1 font-mono">{disk_free:.1f} <span class="text-sm font-normal text-slate-400">Go libres</span></div>
+                    <div class="text-xs text-slate-400 mb-3">Partition racine virtuelle /</div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div class="bg-emerald-500 h-1.5 rounded-full" style="width: 65%"></div>
+                    </div>
+                </div>
+
+                <!-- Card 4: VMs -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 text-xs mb-3">
+                        <span class="font-semibold uppercase">Instances Déployées</span>
+                        <span class="text-base">⚡</span>
+                    </div>
+                    <div class="text-2xl font-bold text-emerald-400 mb-1 font-mono">{running_count} <span class="text-sm font-normal text-slate-400">actives</span></div>
+                    <div class="text-xs text-slate-400 mb-3">{active_count} instances enregistrées au total</div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div class="bg-emerald-500 h-1.5 rounded-full" style="width: {int((running_count / max(1, active_count)) * 100)}%"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Deployed Virtual Machines Table -->
+        <section class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div class="p-6 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-bold text-white">Machines Virtuelles en Production</h2>
+                    <p class="text-xs text-slate-400 mt-1">Instances matérielles orchestrées localement sur ce nœud Raspberry Pi</p>
+                </div>
+
+                <div class="flex items-center space-x-3">
+                    <span class="text-xs font-semibold px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-lg text-slate-300">
+                        Total : {active_count} instance(s)
+                    </span>
+                    <button onclick="location.reload()" class="text-xs bg-sky-600 hover:bg-sky-500 text-white font-semibold px-3 py-1.5 rounded-lg transition shadow-sm">
+                        🔄 Actualiser
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm text-slate-300">
+                    <thead class="bg-slate-950/60 text-xs uppercase font-semibold text-slate-400 border-b border-slate-800">
+                        <tr>
+                            <th class="px-6 py-3.5">Instance & OS</th>
+                            <th class="px-6 py-3.5">Statut</th>
+                            <th class="px-6 py-3.5">Adresse IP & Réseau</th>
+                            <th class="px-6 py-3.5">Ressources</th>
+                            <th class="px-6 py-3.5">UUID</th>
+                            <th class="px-6 py-3.5">Création</th>
+                            <th class="px-6 py-3.5 text-right">Accès SSH</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60">
+                        {rows_html}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-slate-900 border-t border-slate-800 py-6 text-center text-xs text-slate-500">
+        <p>Projet d'Innovation — Institut National des Postes et Télécommunications (INPT)</p>
+        <p class="mt-1">Plateforme IaaS & Orchestrateur Décentralisé • Supervisor : Pr. Safae DAHMANI • Étudiant : Yahya ASLOUNE</p>
+    </footer>
+
+    <!-- Auto-refresh Script -->
+    <script>
+        // Auto-refresh every 10 seconds to keep telemetry fresh
+        setTimeout(() => {{
+            location.reload();
+        }}, 10000);
+    </script>
+</body>
+</html>
+"""
