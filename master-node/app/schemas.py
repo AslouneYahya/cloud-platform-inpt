@@ -31,6 +31,14 @@ class ClusterHealthResponse(BaseModel):
     ram_total_mb: int
     disk_free_gb: float
     active_vms: int
+    node_model: Optional[str] = "Raspberry Pi 4 Model B"
+    uptime: Optional[str] = None
+    cpu_temp: Optional[float] = None
+    load_1m: Optional[str] = None
+    ram_usage_pct: Optional[int] = None
+    disk_total_gb: Optional[float] = None
+    disk_used_gb: Optional[float] = None
+    disk_usage_pct: Optional[int] = None
 
 class VmExecRequest(BaseModel):
     command: str = Field(..., max_length=1000)

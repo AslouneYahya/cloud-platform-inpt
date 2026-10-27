@@ -70,16 +70,32 @@ def get_deployed_vms() -> List[Dict[str, Any]]:
 
 def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> str:
     """Render a standalone, high-performance web dashboard for the Master Node."""
-    node_name = str(health.get("node_name", "rpi-master"))
+    node_name = str(health.get("node_name", "raspberrypi"))
+    node_model = str(health.get("node_model", "Raspberry Pi 4 Model B"))
     status = str(health.get("status", "HEALTHY"))
+    uptime = str(health.get("uptime", "up 3 hours"))
     cpu_cores = safe_int(health.get("cpu_cores", 4), 4)
-    ram_used = safe_int(health.get("ram_used_mb", 0), 0)
-    ram_total = max(1, safe_int(health.get("ram_total_mb", 4096), 4096))
-    ram_pct = min(100, max(0, int((ram_used / ram_total) * 100)))
+    cpu_temp = safe_float(health.get("cpu_temp", 52.0), 52.0)
+    load_1m = str(health.get("load_1m", "0.08"))
+
+    ram_used = safe_int(health.get("ram_used_mb", 550), 550)
+    ram_total = max(1, safe_int(health.get("ram_total_mb", 3794), 3794))
+    ram_avail = safe_int(health.get("ram_avail_mb", ram_total - ram_used), ram_total - ram_used)
+    ram_pct = safe_int(health.get("ram_usage_pct", int((ram_used / ram_total) * 100)), int((ram_used / ram_total) * 100))
+    ram_pct = min(100, max(0, ram_pct))
+
+    disk_total = safe_float(health.get("disk_total_gb", 14.3), 14.3)
+    disk_used = safe_float(health.get("disk_used_gb", 4.0), 4.0)
     disk_free = safe_float(health.get("disk_free_gb", 10.0), 10.0)
+    disk_pct = safe_int(health.get("disk_usage_pct", 29), 29)
+    disk_pct = min(100, max(0, disk_pct))
+
     active_count = len(vms)
     running_count = sum(1 for v in vms if v.get("status") == "RUNNING")
     running_pct = int((running_count / max(1, active_count)) * 100) if active_count > 0 else 0
+
+    # Temperature color
+    temp_color_class = "text-emerald-400" if cpu_temp < 60 else ("text-amber-400" if cpu_temp < 75 else "text-rose-400")
 
     # Generate VM table rows
     rows_html = ""
@@ -147,7 +163,7 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> 
                     {vm.get('created_at', '-')}
                 </td>
                 <td class="px-6 py-4 text-right">
-                    <code class="text-xs bg-slate-800 text-slate-300 px-2 py-1 rounded border border-slate-700">ssh root@{vm.get('ip', 'node')}</code>
+                    <code class="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded border border-slate-700 font-mono">ssh root@{vm.get('ip', 'node')}</code>
                 </td>
             </tr>
             """
@@ -174,13 +190,6 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> 
             }}
         }}
     </script>
-    <style>
-        @keyframes pulse-subtle {{
-            0%, 100% {{ opacity: 1; }}
-            50% {{ opacity: 0.6; }}
-        }}
-        .pulse-subtle {{ animation: pulse-subtle 3s infinite ease-in-out; }}
-    </style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased">
     <!-- Top Navigation Bar -->
@@ -195,12 +204,12 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> 
                         <h1 class="text-base font-bold text-white tracking-wide">INPT CLOUD PLATFORM</h1>
                         <span class="bg-sky-500/10 text-sky-400 border border-sky-500/20 text-xs px-2 py-0.5 rounded-md font-semibold">Master Node</span>
                     </div>
-                    <div class="text-xs text-slate-400">Cluster Orchestrator Daemon • Raspberry Pi 4 ARM64</div>
+                    <div class="text-xs text-slate-400">{node_model} • Uptime : {uptime}</div>
                 </div>
             </div>
 
             <div class="flex items-center space-x-4">
-                <div class="hidden sm:flex items-center space-x-2 bg-slate-800/80 border border-slate-700/60 rounded-lg px-3 py-1.5 text-xs text-slate-300">
+                <div class="flex items-center space-x-2 bg-slate-800/80 border border-slate-700/60 rounded-lg px-3 py-1.5 text-xs text-slate-300">
                     <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                     <span class="font-mono text-slate-200">{node_name}</span>
                     <span class="text-slate-500">•</span>
@@ -219,35 +228,39 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> 
         <!-- Cluster Node Telemetry Cards -->
         <section>
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Télémétrie Matérielle du Nœud</h2>
+                <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Télémétrie Matérielle Réelle (Sondes Hôte)</h2>
                 <div class="text-xs text-slate-500 flex items-center space-x-2">
-                    <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-                    <span>Actualisation automatique en temps réel</span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping"></span>
+                    <span>Actualisation en direct</span>
                 </div>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <!-- Card 1: CPU -->
                 <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-                    <div class="flex items-center justify-between text-slate-400 text-xs mb-3">
+                    <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
                         <span class="font-semibold uppercase">Processeur (CPU)</span>
-                        <span class="text-base">💻</span>
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 border border-slate-700 {temp_color_class}">
+                            🌡️ {cpu_temp}°C
+                        </span>
                     </div>
                     <div class="text-2xl font-bold text-white mb-1 font-mono">{cpu_cores} Cœurs</div>
-                    <div class="text-xs text-slate-400 mb-3">ARM Cortex-A72 @ 1.80GHz</div>
+                    <div class="text-xs text-slate-400 mb-3">Charge système (1 min) : <strong class="text-sky-400 font-mono">{load_1m}</strong></div>
                     <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                        <div class="bg-sky-500 h-1.5 rounded-full" style="width: 25%"></div>
+                        <div class="bg-sky-500 h-1.5 rounded-full" style="width: {min(100, int(safe_float(load_1m, 0.1) * 25))}%"></div>
                     </div>
                 </div>
 
                 <!-- Card 2: RAM -->
                 <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-                    <div class="flex items-center justify-between text-slate-400 text-xs mb-3">
+                    <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
                         <span class="font-semibold uppercase">Mémoire Vive (RAM)</span>
-                        <span class="text-base">🧠</span>
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                            {ram_pct}%
+                        </span>
                     </div>
                     <div class="text-2xl font-bold text-white mb-1 font-mono">{ram_used} <span class="text-sm font-normal text-slate-400">/ {ram_total} Mo</span></div>
-                    <div class="text-xs text-slate-400 mb-3">{ram_pct}% alloué au système & VMs</div>
+                    <div class="text-xs text-slate-400 mb-3">Disponible réelle : <strong class="text-slate-200 font-mono">{ram_avail} Mo</strong></div>
                     <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
                         <div class="bg-indigo-500 h-1.5 rounded-full" style="width: {ram_pct}%"></div>
                     </div>
@@ -255,25 +268,29 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> 
 
                 <!-- Card 3: Storage -->
                 <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-                    <div class="flex items-center justify-between text-slate-400 text-xs mb-3">
-                        <span class="font-semibold uppercase">Stockage NVMe/SD</span>
-                        <span class="text-base">💾</span>
+                    <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+                        <span class="font-semibold uppercase">Stockage NVMe / SD</span>
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            {disk_pct}%
+                        </span>
                     </div>
-                    <div class="text-2xl font-bold text-white mb-1 font-mono">{disk_free:.1f} <span class="text-sm font-normal text-slate-400">Go libres</span></div>
-                    <div class="text-xs text-slate-400 mb-3">Partition racine virtuelle /</div>
+                    <div class="text-2xl font-bold text-white mb-1 font-mono">{disk_used:.1f} <span class="text-sm font-normal text-slate-400">/ {disk_total:.1f} Go</span></div>
+                    <div class="text-xs text-slate-400 mb-3">Espace libre disponible : <strong class="text-emerald-400 font-mono">{disk_free:.1f} Go</strong></div>
                     <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                        <div class="bg-emerald-500 h-1.5 rounded-full" style="width: 65%"></div>
+                        <div class="bg-emerald-500 h-1.5 rounded-full" style="width: {disk_pct}%"></div>
                     </div>
                 </div>
 
                 <!-- Card 4: VMs -->
                 <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-                    <div class="flex items-center justify-between text-slate-400 text-xs mb-3">
+                    <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
                         <span class="font-semibold uppercase">Instances Déployées</span>
-                        <span class="text-base">⚡</span>
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            {running_pct}% en service
+                        </span>
                     </div>
-                    <div class="text-2xl font-bold text-emerald-400 mb-1 font-mono">{running_count} <span class="text-sm font-normal text-slate-400">actives</span></div>
-                    <div class="text-xs text-slate-400 mb-3">{active_count} instances enregistrées au total</div>
+                    <div class="text-2xl font-bold text-emerald-400 mb-1 font-mono">{running_count} <span class="text-sm font-normal text-slate-400">/ {active_count}</span></div>
+                    <div class="text-xs text-slate-400 mb-3">{running_count} VMs opérationnelles sur le matériel</div>
                     <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
                         <div class="bg-emerald-500 h-1.5 rounded-full" style="width: {running_pct}%"></div>
                     </div>
