@@ -7,6 +7,9 @@ import lombok.extern.slf4j.Slf4j;
 import ma.inpt.cloud.auth.dto.ApiResponse;
 import ma.inpt.cloud.auth.service.AuthService;
 import ma.inpt.cloud.vm.dto.CreateVmRequest;
+import ma.inpt.cloud.vm.dto.VmExecRequest;
+import ma.inpt.cloud.vm.dto.VmExecResponse;
+import ma.inpt.cloud.vm.dto.VmLogDto;
 import ma.inpt.cloud.vm.dto.VmResponse;
 import ma.inpt.cloud.vm.service.VmService;
 import org.springframework.http.HttpStatus;
@@ -151,6 +154,50 @@ public class VmController {
                     .body(ApiResponse.error(ex.getMessage()));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.error(ex.getMessage()));
+        }
+    }
+
+    /**
+     * GET /api/vms/{id}/logs — Stream/retrieve live AWS CloudWatch-style provisioning and lifecycle logs
+     */
+    @GetMapping("/{id}/logs")
+    public ResponseEntity<ApiResponse<List<VmLogDto>>> getVmLogs(
+            @PathVariable UUID id,
+            HttpSession session) {
+        try {
+            UUID userId = getAuthenticatedUserId(session);
+            List<VmLogDto> logs = vmService.getVmLogs(id, userId);
+            return ResponseEntity.ok(ApiResponse.ok("Logs retrieved successfully", logs));
+        } catch (SecurityException ex) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error(ex.getMessage()));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.error(ex.getMessage()));
+        }
+    }
+
+    /**
+     * POST /api/vms/{id}/exec — Execute command via Web SSH terminal
+     */
+    @PostMapping("/{id}/exec")
+    public ResponseEntity<ApiResponse<VmExecResponse>> execCommand(
+            @PathVariable UUID id,
+            @Valid @RequestBody VmExecRequest request,
+            HttpSession session) {
+        try {
+            UUID userId = getAuthenticatedUserId(session);
+            VmExecResponse response = vmService.executeCommand(id, userId, request.command());
+            return ResponseEntity.ok(ApiResponse.ok("Command executed", response));
+        } catch (SecurityException ex) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error(ex.getMessage()));
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error(ex.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error(ex.getMessage()));
         }
     }

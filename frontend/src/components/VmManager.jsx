@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getVms, createVm, startVm, stopVm, deleteVm } from '../api/vms.js';
+import VmLiveLogsModal from './VmLiveLogsModal.jsx';
+import VmTerminalModal from './VmTerminalModal.jsx';
 
 const INPT_BLUE    = '#003366';
 const INPT_BLUE_LT = '#004a99';
@@ -14,6 +16,10 @@ export default function VmManager() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionLoadingId, setActionLoadingId] = useState(null);
+
+  // Live Logs and Terminal Modals
+  const [logsVm, setLogsVm] = useState(null);
+  const [terminalVm, setTerminalVm] = useState(null);
 
   // Modal creation state
   const [showModal, setShowModal] = useState(false);
@@ -91,12 +97,17 @@ export default function VmManager() {
         openPorts: selectedPorts,
       };
 
-      await createVm(payload);
+      const res = await createVm(payload);
       setShowModal(false);
       // Reset form
       setName('');
       setInitialPassword('');
       setSshPublicKey('');
+
+      const created = res.data?.data || res.data;
+      if (created && created.id) {
+        setLogsVm(created); // Automatically open live logs view like AWS CloudWatch
+      }
       await loadVms();
     } catch (err) {
       setFormError(err?.response?.data?.message || 'Échec du provisionnement de la machine virtuelle.');
@@ -152,7 +163,7 @@ export default function VmManager() {
     }
   }
 
-  function getStatusBadge(status) {
+  function getStatusBadge(status, vmItem) {
     switch (status) {
       case 'RUNNING':
         return (
@@ -163,9 +174,25 @@ export default function VmManager() {
       case 'PROVISIONING':
       case 'PENDING':
         return (
-          <span style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '0.25rem 0.65rem', borderRadius: '12px', fontSize: '0.78rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+          <span
+            onClick={() => vmItem && setLogsVm(vmItem)}
+            style={{
+              backgroundColor: '#fff3cd',
+              color: '#856404',
+              padding: '0.25rem 0.65rem',
+              borderRadius: '12px',
+              fontSize: '0.78rem',
+              fontWeight: '700',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              cursor: 'pointer',
+              border: '1px solid #ffeeba'
+            }}
+            title="Cliquer pour voir le flux de logs en direct (AWS CloudWatch)"
+          >
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: WARNING_ORANGE, display: 'inline-block' }}></span>
-            Déploiement en cours...
+            Déploiement en cours (Logs ⚡)
           </span>
         );
       case 'STOPPED':
@@ -176,8 +203,21 @@ export default function VmManager() {
         );
       case 'FAILED':
         return (
-          <span style={{ backgroundColor: '#f8d7da', color: '#721c24', padding: '0.25rem 0.65rem', borderRadius: '12px', fontSize: '0.78rem', fontWeight: '700' }}>
-            ⚠ Échec / Rollback
+          <span
+            onClick={() => vmItem && setLogsVm(vmItem)}
+            style={{
+              backgroundColor: '#f8d7da',
+              color: '#721c24',
+              padding: '0.25rem 0.65rem',
+              borderRadius: '12px',
+              fontSize: '0.78rem',
+              fontWeight: '700',
+              cursor: 'pointer',
+              border: '1px solid #f5c6cb'
+            }}
+            title="Cliquer pour inspecter les logs d'échec"
+          >
+            ⚠ Échec (Voir logs)
           </span>
         );
       default:
@@ -259,7 +299,7 @@ export default function VmManager() {
                       {vm.os}
                     </span>
                   </div>
-                  {getStatusBadge(vm.status)}
+                  {getStatusBadge(vm.status, vm)}
                 </div>
 
                 {/* Specs pills */}
@@ -309,31 +349,80 @@ export default function VmManager() {
               </div>
 
               {/* Action buttons */}
-              <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '0.5rem', borderTop: `1px solid ${BORDER_COLOR}` }}>
+              <div style={{ display: 'flex', gap: '0.4rem', paddingTop: '0.65rem', borderTop: `1px solid ${BORDER_COLOR}`, flexWrap: 'wrap', alignItems: 'center' }}>
+                {/* AWS Live Logs button */}
+                <button
+                  onClick={() => setLogsVm(vm)}
+                  style={{
+                    padding: '0.45rem 0.65rem',
+                    backgroundColor: '#f1f5f9',
+                    border: `1px solid #cbd5e1`,
+                    borderRadius: '6px',
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    color: '#334155',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.3rem'
+                  }}
+                  title="Afficher les journaux de déploiement en direct (AWS CloudWatch)"
+                >
+                  <span>📋</span> Logs {vm.status === 'PROVISIONING' ? '⚡' : ''}
+                </button>
+
+                {/* Web SSH Terminal button for RUNNING instances */}
+                {vm.status === 'RUNNING' && (
+                  <button
+                    onClick={() => setTerminalVm(vm)}
+                    style={{
+                      padding: '0.45rem 0.75rem',
+                      backgroundColor: '#0f172a',
+                      color: '#38bdf8',
+                      border: '1px solid #1e293b',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      fontWeight: '700',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                    }}
+                    title="Ouvrir la console interactive Web SSH"
+                  >
+                    <span>🖥</span> Console SSH
+                  </button>
+                )}
+
+                {/* Start / Stop power management */}
                 {vm.status === 'RUNNING' && (
                   <button
                     onClick={() => handleStop(vm.id)}
                     disabled={actionLoadingId === vm.id}
-                    style={{ flex: 1, padding: '0.45rem', backgroundColor: actionLoadingId === vm.id ? '#edf2f7' : '#fff', border: `1px solid ${BORDER_COLOR}`, borderRadius: '6px', fontSize: '0.8rem', cursor: actionLoadingId === vm.id ? 'wait' : 'pointer', fontWeight: '600', color: '#4a5568' }}
+                    style={{ flex: 1, minWidth: '70px', padding: '0.45rem', backgroundColor: actionLoadingId === vm.id ? '#edf2f7' : '#fff', border: `1px solid ${BORDER_COLOR}`, borderRadius: '6px', fontSize: '0.78rem', cursor: actionLoadingId === vm.id ? 'wait' : 'pointer', fontWeight: '600', color: '#4a5568' }}
                   >
-                    {actionLoadingId === vm.id ? '⏳ Arrêt en cours...' : 'Arrêter'}
+                    {actionLoadingId === vm.id ? '⏳ Arrêt...' : 'Arrêter'}
                   </button>
                 )}
                 {vm.status === 'STOPPED' && (
                   <button
                     onClick={() => handleStart(vm.id)}
                     disabled={actionLoadingId === vm.id}
-                    style={{ flex: 1, padding: '0.45rem', backgroundColor: actionLoadingId === vm.id ? '#a5d6a7' : SUCCESS_GREEN, color: '#fff', border: 'none', borderRadius: '6px', fontSize: '0.8rem', cursor: actionLoadingId === vm.id ? 'wait' : 'pointer', fontWeight: '600' }}
+                    style={{ flex: 1, minWidth: '70px', padding: '0.45rem', backgroundColor: actionLoadingId === vm.id ? '#a5d6a7' : SUCCESS_GREEN, color: '#fff', border: 'none', borderRadius: '6px', fontSize: '0.78rem', cursor: actionLoadingId === vm.id ? 'wait' : 'pointer', fontWeight: '600' }}
                   >
-                    {actionLoadingId === vm.id ? '⏳ Démarrage en cours...' : 'Démarrer'}
+                    {actionLoadingId === vm.id ? '⏳ Démarrage...' : 'Démarrer'}
                   </button>
                 )}
+
+                {/* Terminate / Delete button */}
                 <button
                   onClick={() => handleDelete(vm.id, vm.name)}
                   disabled={actionLoadingId === vm.id}
-                  style={{ padding: '0.45rem 0.85rem', backgroundColor: '#fff', border: `1px solid #fed7d7`, borderRadius: '6px', fontSize: '0.8rem', cursor: actionLoadingId === vm.id ? 'wait' : 'pointer', fontWeight: '600', color: DANGER_RED }}
+                  style={{ padding: '0.45rem 0.65rem', backgroundColor: '#fff', border: `1px solid #fed7d7`, borderRadius: '6px', fontSize: '0.78rem', cursor: actionLoadingId === vm.id ? 'wait' : 'pointer', fontWeight: '600', color: DANGER_RED }}
+                  title="Supprimer définitivement l'instance"
                 >
-                  {actionLoadingId === vm.id ? '⏳ ...' : 'Supprimer'}
+                  {actionLoadingId === vm.id ? '⏳' : 'Supprimer'}
                 </button>
               </div>
             </div>
@@ -542,6 +631,22 @@ export default function VmManager() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* AWS CloudWatch Live Logs Modal */}
+      {logsVm && (
+        <VmLiveLogsModal
+          vm={logsVm}
+          onClose={() => setLogsVm(null)}
+        />
+      )}
+
+      {/* Web SSH Terminal Modal */}
+      {terminalVm && (
+        <VmTerminalModal
+          vm={terminalVm}
+          onClose={() => setTerminalVm(null)}
+        />
       )}
     </div>
   );

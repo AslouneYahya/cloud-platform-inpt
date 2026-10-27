@@ -41,3 +41,17 @@ export function stopVm(id) {
 export function deleteVm(id) {
   return apiClient.delete(`/vms/${id}`);
 }
+
+/**
+ * Fetch live AWS CloudWatch-style provisioning and lifecycle logs
+ */
+export function getVmLogs(id) {
+  return apiClient.get(`/vms/${id}/logs`);
+}
+
+/**
+ * Execute command via Web SSH terminal
+ */
+export function executeVmCommand(id, command) {
+  return apiClient.post(`/vms/${id}/exec`, { command });
+}

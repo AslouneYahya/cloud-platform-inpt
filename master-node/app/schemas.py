@@ -31,3 +31,15 @@ class ClusterHealthResponse(BaseModel):
     ram_total_mb: int
     disk_free_gb: float
     active_vms: int
+
+class VmExecRequest(BaseModel):
+    command: str = Field(..., max_length=1000)
+
+class VmExecResponse(BaseModel):
+    status: str
+    vm_id: str
+    command: str
+    stdout: str
+    stderr: Optional[str] = ""
+    exit_code: int
+    executed_at: str

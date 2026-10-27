@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import logging
 import subprocess
 from typing import Dict, Optional
@@ -149,3 +150,49 @@ def deprovision_vm(vm_id: str, _: None = Header(None)):
         node_id=config.CLUSTER_NODE_NAME,
         message=data.get("message", "VM destroyed and cleaned up.")
     )
+
+@app.post("/vms/{vm_id}/exec", response_model=schemas.VmExecResponse)
+def exec_vm_command(vm_id: str, req: schemas.VmExecRequest, _: None = Header(None)):
+    """Execute command in VM or cluster node context."""
+    logger.info("Executing Web SSH command for VM %s: %s", vm_id, req.command)
+    script_path = config.SCRIPTS_DIR / "exec.sh"
+    cmd = ["bash", str(script_path), "--id", vm_id, "--cmd", req.command]
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=15
+        )
+        return schemas.VmExecResponse(
+            status="SUCCESS" if proc.returncode == 0 else "ERROR",
+            vm_id=vm_id,
+            command=req.command,
+            stdout=proc.stdout,
+            stderr=proc.stderr,
+            exit_code=proc.returncode,
+            executed_at=datetime.now(timezone.utc).isoformat()
+        )
+    except subprocess.TimeoutExpired:
+        return schemas.VmExecResponse(
+            status="TIMEOUT",
+            vm_id=vm_id,
+            command=req.command,
+            stdout="",
+            stderr="Command execution timed out after 15 seconds.",
+            exit_code=124,
+            executed_at=datetime.now(timezone.utc).isoformat()
+        )
+    except Exception as e:
+        logger.exception("Exec command failed for VM %s", vm_id)
+        return schemas.VmExecResponse(
+            status="ERROR",
+            vm_id=vm_id,
+            command=req.command,
+            stdout="",
+            stderr=str(e),
+            exit_code=1,
+            executed_at=datetime.now(timezone.utc).isoformat()
+        )
