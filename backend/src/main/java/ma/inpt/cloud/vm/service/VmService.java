@@ -438,11 +438,15 @@ public class VmService {
                     return objectMapper.readValue(response.body(), VmExecResponse.class);
                 } else {
                     log.warn("Master Node exec returned HTTP {}: {}", response.statusCode(), response.body());
-                    return simulateCommandExecution(vm, command);
+                    return new VmExecResponse("ERROR", vmId.toString(), command, "",
+                            "Master Node error HTTP " + response.statusCode() + ": " + response.body(), 1,
+                            Instant.now().toString());
                 }
             } catch (Exception e) {
-                log.warn("Master Node exec failed or timed out, using fallback emulation: {}", e.getMessage());
-                return simulateCommandExecution(vm, command);
+                log.error("Master Node exec failed: {}", e.getMessage(), e);
+                return new VmExecResponse("ERROR", vmId.toString(), command, "",
+                        "Connection error: " + e.getMessage(), 1,
+                        Instant.now().toString());
             }
         } else {
             return simulateCommandExecution(vm, command);

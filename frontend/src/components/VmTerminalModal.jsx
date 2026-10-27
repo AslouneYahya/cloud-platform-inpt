@@ -79,12 +79,11 @@ export default function VmTerminalModal({ vm, onClose }) {
       try {
         const res = await executeVmCommand(vm.id, cmd);
         const data = res.data?.data || res.data || {};
-        const output = data.stdout || data.stderr || '';
-        if (output) {
-          // split lines to preserve raw terminal output format
-          const outputLines = output.split('\n');
-          // remove last empty line if any
-          if (outputLines[outputLines.length - 1] === '') outputLines.pop();
+        const stdout = data.stdout || '';
+        const stderr = data.stderr || '';
+        const combined = (stdout + (stdout && stderr && !stdout.endsWith('\n') ? '\n' : '') + stderr).trimEnd();
+        if (combined) {
+          const outputLines = combined.split('\n');
           setLines(prev => [...prev, ...outputLines]);
         }
       } catch (err) {

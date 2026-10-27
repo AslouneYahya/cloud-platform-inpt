@@ -1,11 +1,16 @@
 package ma.inpt.cloud.vm.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record VmExecResponse(
     String status,
-    String vmId,
+    @JsonProperty("vmId") @JsonAlias("vm_id") String vmId,
     String command,
     String stdout,
     String stderr,
-    int exitCode,
-    String executedAt
+    @JsonProperty("exitCode") @JsonAlias("exit_code") int exitCode,
+    @JsonProperty("executedAt") @JsonAlias("executed_at") String executedAt
 ) {}
