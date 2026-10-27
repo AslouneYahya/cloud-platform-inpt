@@ -415,7 +415,7 @@ export default function VmManager() {
                           </span>
                         </div>
                         <div style={{ height: '4px', backgroundColor: '#e2e8f0', borderRadius: '2px', overflow: 'hidden' }}>
-                          <div style={{ width: `${vm.status === 'RUNNING' ? Math.max(8, telem.cpuPct * 12) : 0}%`, height: '100%', backgroundColor: '#0ea5e9', borderRadius: '2px' }}></div>
+                          <div style={{ width: `${vm.status === 'RUNNING' ? Math.min(100, Math.max(0, telem.cpuPct)) : 0}%`, height: '100%', backgroundColor: '#0ea5e9', borderRadius: '2px', transition: 'width 0.3s ease' }}></div>
                         </div>
                       </div>
 

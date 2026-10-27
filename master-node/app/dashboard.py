@@ -247,7 +247,7 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> 
                                 <span class="font-mono font-bold {'text-sky-400' if is_running else 'text-slate-500'}">{cpu_usage}%</span>
                             </div>
                             <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                                <div class="bg-sky-400 h-1.5 rounded-full" style="width: {min(100, int(cpu_usage * 15))}%"></div>
+                                <div class="bg-sky-400 h-1.5 rounded-full" style="width: {min(100, max(0, cpu_usage))}%"></div>
                             </div>
                         </div>
 
