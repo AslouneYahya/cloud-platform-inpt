@@ -5,7 +5,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -40,7 +39,13 @@ public class VmLog {
     @Column(name = "message", length = 1000, nullable = false)
     private String message;
 
-    @CreationTimestamp
     @Column(name = "timestamp", nullable = false, updatable = false)
     private LocalDateTime timestamp;
+
+    @PrePersist
+    public void prePersist() {
+        if (this.timestamp == null) {
+            this.timestamp = LocalDateTime.now();
+        }
+    }
 }
