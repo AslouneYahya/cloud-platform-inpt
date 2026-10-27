@@ -16,10 +16,19 @@ sudo systemctl stop cloudflared 2>/dev/null || true
 sudo systemctl stop warp-svc 2>/dev/null || true
 
 echo "=== [2/5] Downloading & Extracting Cloudflare WARP ==="
-if [ ! -f /tmp/cloudflare-warp.deb ]; then
-    echo "Downloading official Cloudflare WARP ARM64 package..."
-    curl -# -L -o /tmp/cloudflare-warp.deb https://pkg.cloudflareclient.com/pool/bookworm/main/c/cloudflare-warp/cloudflare-warp_2026.8.2115.0_arm64.deb
+RELEASE=$(lsb_release -cs 2>/dev/null || grep VERSION_CODENAME /etc/os-release | cut -d= -f2 || echo "bullseye")
+echo "Debian release detected: $RELEASE"
+
+if [ "$RELEASE" = "bullseye" ]; then
+    DEB_URL="https://pkg.cloudflareclient.com/pool/bullseye/main/c/cloudflare-warp/cloudflare-warp_2026.3.846.0_arm64.deb"
+else
+    DEB_URL="https://pkg.cloudflareclient.com/pool/bookworm/main/c/cloudflare-warp/cloudflare-warp_2026.8.2115.0_arm64.deb"
 fi
+
+# Clean previous downloaded deb to avoid version mismatch
+rm -f /tmp/cloudflare-warp.deb
+echo "Downloading official Cloudflare WARP ARM64 package for $RELEASE..."
+curl -# -L -o /tmp/cloudflare-warp.deb "$DEB_URL"
 
 echo "Extracting official binaries..."
 rm -rf /tmp/warp_extract && mkdir -p /tmp/warp_extract
