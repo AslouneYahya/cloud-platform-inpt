@@ -25,10 +25,13 @@ else
     DEB_URL="https://pkg.cloudflareclient.com/pool/bookworm/main/c/cloudflare-warp/cloudflare-warp_2026.8.2115.0_arm64.deb"
 fi
 
-# Clean previous downloaded deb to avoid version mismatch
-rm -f /tmp/cloudflare-warp.deb
-echo "Downloading official Cloudflare WARP ARM64 package for $RELEASE..."
-curl -# -L -o /tmp/cloudflare-warp.deb "$DEB_URL"
+# Do NOT re-download if file is already present on disk (preserves mobile data)
+if [ -s /tmp/cloudflare-warp.deb ] && [ $(stat -c%s /tmp/cloudflare-warp.deb 2>/dev/null || stat -f%z /tmp/cloudflare-warp.deb 2>/dev/null || echo 0) -gt 10000000 ]; then
+    echo "Package already downloaded on disk (/tmp/cloudflare-warp.deb). Zero data consumed!"
+else
+    echo "Downloading official Cloudflare WARP package for $RELEASE..."
+    curl -# -L -o /tmp/cloudflare-warp.deb "$DEB_URL"
+fi
 
 echo "Extracting official binaries..."
 rm -rf /tmp/warp_extract && mkdir -p /tmp/warp_extract
@@ -48,7 +51,11 @@ sudo systemctl enable --now warp-svc
 sleep 4
 
 echo "=== [3/5] Activating & Connecting Cloudflare WARP ==="
-warp-cli --accept-tos registration new 2>/dev/null || warp-cli register 2>/dev/null || true
+# Accept privacy policy automatically for both new and legacy warp-cli
+yes | warp-cli --accept-tos register 2>/dev/null || \
+yes | warp-cli register 2>/dev/null || \
+warp-cli --accept-tos registration new 2>/dev/null || true
+
 warp-cli --accept-tos mode warp 2>/dev/null || warp-cli set-mode warp 2>/dev/null || true
 echo "Connecting to Cloudflare WARP network..."
 warp-cli --accept-tos connect 2>/dev/null || warp-cli connect 2>/dev/null || true
