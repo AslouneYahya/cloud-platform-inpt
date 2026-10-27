@@ -73,8 +73,10 @@ def run_script(script_name: str, args: list) -> Dict[str, str]:
 def get_dashboard():
     """Serve live, responsive web dashboard for physical Master Node hardware and deployed VMs."""
     try:
-        health_data = run_script("check_health.sh", [])
-    except Exception:
+        health_resp = get_health()
+        health_data = health_resp.model_dump()
+    except Exception as e:
+        logger.warning("Failed to get health for dashboard: %s", e)
         health_data = {
             "node_name": config.CLUSTER_NODE_NAME,
             "status": "HEALTHY",
@@ -85,8 +87,13 @@ def get_dashboard():
             "active_vms": 2
         }
 
-    vms = dashboard.get_deployed_vms()
-    return HTMLResponse(content=dashboard.render_dashboard_html(health_data, vms))
+    try:
+        vms = dashboard.get_deployed_vms()
+        html_content = dashboard.render_dashboard_html(health_data, vms)
+        return HTMLResponse(content=html_content)
+    except Exception as e:
+        logger.exception("Failed to render dashboard")
+        return HTMLResponse(content=f"<h1>Dashboard Render Error</h1><p>{e}</p>", status_code=500)
 
 @app.get("/api/cluster/vms")
 def get_cluster_vms():
@@ -97,7 +104,7 @@ def get_cluster_vms():
 def get_cluster_stats():
     """Return combined node telemetry and VM inventory as JSON."""
     try:
-        health_data = run_script("check_health.sh", [])
+        health_data = get_health().model_dump()
     except Exception:
         health_data = {
             "node_name": config.CLUSTER_NODE_NAME,

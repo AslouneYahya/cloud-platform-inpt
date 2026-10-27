@@ -6,6 +6,18 @@ from typing import Any, Dict, List
 
 VMS_BASE_DIR = Path("/var/lib/inpt-cloud/vms")
 
+def safe_int(val: Any, default: int = 0) -> int:
+    try:
+        return int(float(val))
+    except (ValueError, TypeError):
+        return default
+
+def safe_float(val: Any, default: float = 0.0) -> float:
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
 def get_deployed_vms() -> List[Dict[str, Any]]:
     """Scan the Raspberry Pi storage directory to list all provisioned instances."""
     vms = []
@@ -40,9 +52,9 @@ def get_deployed_vms() -> List[Dict[str, Any]]:
                         if k == "id": vm_data["vm_id"] = v
                         elif k == "name": vm_data["name"] = v
                         elif k == "os": vm_data["os"] = v
-                        elif k == "cpu": vm_data["cpu"] = int(v) if v.isdigit() else 1
-                        elif k == "ram_mb": vm_data["ram_mb"] = int(v) if v.isdigit() else 512
-                        elif k == "disk_gb": vm_data["disk_gb"] = int(v) if v.isdigit() else 10
+                        elif k == "cpu": vm_data["cpu"] = safe_int(v, 1)
+                        elif k == "ram_mb": vm_data["ram_mb"] = safe_int(v, 512)
+                        elif k == "disk_gb": vm_data["disk_gb"] = safe_int(v, 10)
                         elif k == "ip": vm_data["ip"] = v
                         elif k == "ports": vm_data["ports"] = v
                         elif k == "status": vm_data["status"] = v
@@ -58,15 +70,16 @@ def get_deployed_vms() -> List[Dict[str, Any]]:
 
 def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> str:
     """Render a standalone, high-performance web dashboard for the Master Node."""
-    node_name = health.get("node_name", "rpi-master")
-    status = health.get("status", "HEALTHY")
-    cpu_cores = health.get("cpu_cores", 4)
-    ram_used = health.get("ram_used_mb", 0)
-    ram_total = max(1, health.get("ram_total_mb", 4096))
-    ram_pct = int((ram_used / ram_total) * 100)
-    disk_free = health.get("disk_free_gb", 0.0)
+    node_name = str(health.get("node_name", "rpi-master"))
+    status = str(health.get("status", "HEALTHY"))
+    cpu_cores = safe_int(health.get("cpu_cores", 4), 4)
+    ram_used = safe_int(health.get("ram_used_mb", 0), 0)
+    ram_total = max(1, safe_int(health.get("ram_total_mb", 4096), 4096))
+    ram_pct = min(100, max(0, int((ram_used / ram_total) * 100)))
+    disk_free = safe_float(health.get("disk_free_gb", 10.0), 10.0)
     active_count = len(vms)
     running_count = sum(1 for v in vms if v.get("status") == "RUNNING")
+    running_pct = int((running_count / max(1, active_count)) * 100) if active_count > 0 else 0
 
     # Generate VM table rows
     rows_html = ""
@@ -96,7 +109,8 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> 
             elif "Debian" in os_name:
                 os_icon = "🔴"
 
-            ram_display = f"{vm.get('ram_mb', 512)} Mo" if vm.get('ram_mb', 512) < 1024 else f"{vm.get('ram_mb', 512) / 1024:.1f} Go"
+            ram_mb_val = safe_int(vm.get('ram_mb', 512), 512)
+            ram_display = f"{ram_mb_val} Mo" if ram_mb_val < 1024 else f"{ram_mb_val / 1024:.1f} Go"
 
             rows_html += f"""
             <tr class="border-b border-slate-800 hover:bg-slate-850/50 transition">
@@ -127,7 +141,7 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> 
                     </div>
                 </td>
                 <td class="px-6 py-4 font-mono text-xs text-slate-400">
-                    <span title="{vm.get('vm_id')}">{vm.get('vm_id', '')[:8]}...{vm.get('vm_id', '')[-6:]}</span>
+                    <span title="{vm.get('vm_id')}">{str(vm.get('vm_id', ''))[:8]}...{str(vm.get('vm_id', ''))[-6:]}</span>
                 </td>
                 <td class="px-6 py-4 text-xs text-slate-400">
                     {vm.get('created_at', '-')}
@@ -261,7 +275,7 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> 
                     <div class="text-2xl font-bold text-emerald-400 mb-1 font-mono">{running_count} <span class="text-sm font-normal text-slate-400">actives</span></div>
                     <div class="text-xs text-slate-400 mb-3">{active_count} instances enregistrées au total</div>
                     <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                        <div class="bg-emerald-500 h-1.5 rounded-full" style="width: {int((running_count / max(1, active_count)) * 100)}%"></div>
+                        <div class="bg-emerald-500 h-1.5 rounded-full" style="width: {running_pct}%"></div>
                     </div>
                 </div>
             </div>
@@ -314,7 +328,6 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> 
 
     <!-- Auto-refresh Script -->
     <script>
-        // Auto-refresh every 10 seconds to keep telemetry fresh
         setTimeout(() => {{
             location.reload();
         }}, 10000);
