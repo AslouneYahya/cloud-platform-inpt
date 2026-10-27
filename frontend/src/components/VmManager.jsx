@@ -23,9 +23,9 @@ export default function VmManager() {
   // Form fields
   const [name, setName] = useState('');
   const [os, setOs] = useState('Ubuntu 22.04 LTS');
-  const [cpu, setCpu] = useState(2);
-  const [ramMb, setRamMb] = useState(2048);
-  const [diskGb, setDiskGb] = useState(20);
+  const [cpu, setCpu] = useState(1);
+  const [ramMb, setRamMb] = useState(512);
+  const [diskGb, setDiskGb] = useState(5);
   const [accessMode, setAccessMode] = useState('password'); // 'ssh' or 'password'
   const [sshPublicKey, setSshPublicKey] = useState('');
   const [initialPassword, setInitialPassword] = useState('');
@@ -407,9 +407,10 @@ export default function VmManager() {
                     onChange={e => setCpu(Number(e.target.value))}
                     style={{ width: '100%', padding: '0.55rem', border: `1px solid ${BORDER_COLOR}`, borderRadius: '6px', backgroundColor: '#fff' }}
                   >
-                    <option value={1}>1 vCPU</option>
-                    <option value={2}>2 vCPU</option>
-                    <option value={4}>4 vCPU</option>
+                    <option value={1}>1 vCPU (Eco)</option>
+                    <option value={2}>2 vCPU (Standard)</option>
+                    <option value={3}>3 vCPU (Avancé)</option>
+                    <option value={4}>4 vCPU (Max Pi)</option>
                   </select>
                 </div>
 
@@ -422,10 +423,12 @@ export default function VmManager() {
                     onChange={e => setRamMb(Number(e.target.value))}
                     style={{ width: '100%', padding: '0.55rem', border: `1px solid ${BORDER_COLOR}`, borderRadius: '6px', backgroundColor: '#fff' }}
                   >
-                    <option value={512}>512 Mo</option>
+                    <option value={128}>128 Mo (Nano)</option>
+                    <option value={256}>256 Mo (Micro)</option>
+                    <option value={512}>512 Mo (Léger)</option>
                     <option value={1024}>1 Go (1024 Mo)</option>
                     <option value={2048}>2 Go (2048 Mo)</option>
-                    <option value={4096}>4 Go (4096 Mo)</option>
+                    <option value={3072}>3 Go (3072 Mo)</option>
                   </select>
                 </div>
 
@@ -438,10 +441,12 @@ export default function VmManager() {
                     onChange={e => setDiskGb(Number(e.target.value))}
                     style={{ width: '100%', padding: '0.55rem', border: `1px solid ${BORDER_COLOR}`, borderRadius: '6px', backgroundColor: '#fff' }}
                   >
+                    <option value={1}>1 Go (Micro)</option>
+                    <option value={2}>2 Go (Léger)</option>
+                    <option value={5}>5 Go (Standard)</option>
                     <option value={10}>10 Go</option>
                     <option value={20}>20 Go</option>
                     <option value={40}>40 Go</option>
-                    <option value={80}>80 Go</option>
                   </select>
                 </div>
               </div>

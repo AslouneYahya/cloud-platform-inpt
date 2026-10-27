@@ -22,11 +22,11 @@ public record CreateVmRequest(
     @Max(value = 4, message = "Maximum 4 vCPU allowed per VM")
     int cpu,
 
-    @Min(value = 512, message = "Minimum 512 MB RAM required")
+    @Min(value = 128, message = "Minimum 128 MB RAM required")
     @Max(value = 4096, message = "Maximum 4096 MB RAM allowed")
     int ramMb,
 
-    @Min(value = 10, message = "Minimum 10 GB disk required")
+    @Min(value = 1, message = "Minimum 1 GB disk required")
     @Max(value = 100, message = "Maximum 100 GB disk allowed")
     int diskGb,
 

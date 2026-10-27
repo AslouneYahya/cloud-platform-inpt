@@ -6,8 +6,8 @@ class VmProvisionRequest(BaseModel):
     name: str = Field(..., min_length=3, max_length=50)
     os: str = Field(..., description="Requested OS template")
     cpu: int = Field(..., ge=1, le=4)
-    ram_mb: int = Field(..., ge=512, le=4096)
-    disk_gb: int = Field(..., ge=10, le=100)
+    ram_mb: int = Field(..., ge=128, le=4096)
+    disk_gb: int = Field(..., ge=1, le=100)
     ssh_key: Optional[str] = None
     initial_password: Optional[str] = None
     open_ports: List[int] = Field(default_factory=lambda: [22])
