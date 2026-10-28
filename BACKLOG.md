@@ -7,14 +7,14 @@
 
 ---
 
-## 📊 Synthèse Globale de l'Avancement des Sprints
+## 📊 Synthèse Globale de l'Avancement des Sprints (Itérations de 1 semaine)
 
 | Sprint | Thématique Principale | Statut | Période / Jalons |
 | :---: | :--- | :---: | :---: |
-| **Sprint 1** | Socle d'Authentification Sécurisée (NIST/OWASP) & Infrastructure Docker | **Terminé (Checked)** | Semaines 1 - 2 |
-| **Sprint 2** | Orchestration Edge & Intégration Nœud Maître Physique (Raspberry Pi) | **Terminé (Checked)** | Semaines 3 - 4 |
-| **Sprint 3** | Télémétrie Matérielle Réelle, Streaming Logs AWS-style & Console Web SSH | **Terminé (Checked)** | Semaines 5 - 6 |
-| **Sprint 4** | Cluster Multi-Nœuds (Master/Slaves) & Virtualisation Matérielle Stricte KVM | **Planifié (En cours)** | Semaines 7 - 8 |
+| **Sprint 1** | Socle d'Authentification Sécurisée (NIST/OWASP) & Infrastructure Docker | **Terminé (Checked)** | Semaine 1 |
+| **Sprint 2** | Orchestration Edge & Intégration Nœud Maître Physique (Raspberry Pi) | **Terminé (Checked)** | Semaine 2 |
+| **Sprint 3** | Télémétrie Matérielle Réelle, Streaming Logs AWS-style & Console Web SSH | **Terminé (Checked)** | Semaine 3 |
+| **Sprint 4** | Cluster Multi-Nœuds (Master/Slaves) & Virtualisation Matérielle Stricte KVM | **Planifié (En cours)** | Semaine 4 |
 
 ---
 
