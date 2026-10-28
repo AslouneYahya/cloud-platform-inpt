@@ -63,17 +63,47 @@ Les 5 services interconnectés et orchestrés via Docker Compose (Nginx, Backend
 
 ---
 
-## 🛠️ Stack Technique
+### 8. Dashboard Matériel Master Node & Télémétrie Physique (Sprint 3)
+Supervision matérielle en temps réel accessible publiquement sur [`https://master.aslouneyahya.com/dashboard`](https://master.aslouneyahya.com/dashboard). Ce tableau de bord interroge directement les capteurs physiques du Raspberry Pi 4 (température SoC, charge système, mémoire vive, stockage NVMe/SD) et expose la consommation réelle calculée pour chaque machine virtuelle (CPU, RAM allouée vs utilisée, stockage).
 
-* **Reverse Proxy & TLS :** Nginx Alpine (HTTPS forcé, HSTS, CSP durci)
-* **Backend :** Spring Boot 3.3 (Java 21), Spring Security 6, Spring Data JPA
-* **Nœud Maître (Cluster Edge) :** Raspberry Pi 4 ARM64, FastAPI (Python 3), Scripts Bash de provisionnement, Systemd
-* **Tunnel Sécurisé & Zero Trust :** Cloudflare Tunnel (`cloudflared`), Cloudflare WARP (protocole QUIC / WireGuard)
-* **Frontend :** React 18, Vite, React Router, Axios
-* **Base de données :** PostgreSQL 16 (Identifiants UUIDv7)
-* **Gestion des sessions :** Redis 7 (Sessions distribuées, cookies `HttpOnly`, `Secure`, `SameSite=Lax`)
-* **Hachage cryptographique :** Argon2id (`m=65536, t=3, p=1`)
-* **Orchestration :** Docker Compose
+![Dashboard Master Node Raspberry Pi](<screenshots/dashboard of the rasperry pi, with mater asloune yahy com link showing all metrics.png>)
+
+---
+
+### 9. Streaming des Journaux de Déploiement en Direct (AWS CloudWatch Style)
+Console de streaming temps réel inspirée d'AWS CloudWatch. Chaque étape du cycle de vie (`VALIDATION`, `RESOURCE_ALLOCATION`, `STORAGE_INIT`, `CLOUD_INIT`, `NETWORK_SETUP`, `BOOT_COMPLETE`) est journalisée avec timestamp, niveau de sévérité (`INFO`, `WARN`, `ERROR`), filtrage dynamique, auto-scroll et option d'exportation au format `.log`.
+
+![Logs de Déploiement en Direct](<screenshots/logs page in inpt cloud platform.png>)
+
+---
+
+### 10. Console Web SSH Interactive Intégrée
+Terminal Web direct dans le navigateur émulant une véritable session SSH (`root@vm:~#`). Il permet aux utilisateurs et administrateurs d'exécuter des commandes système en direct, d'administrer leurs instances et d'interagir avec le système de fichiers sans nécessiter de client SSH tiers sur leur poste client.
+
+![Console Web SSH](<screenshots/ssh interface in inpt cloud platform.png>)
+
+---
+
+### 11. Services Système & Connectivité Zero Trust sur Raspberry Pi (Sprint 3)
+Maintien en conditions opérationnelles des services d'orchestration via les démons `systemd` (`inpt-master-node.service` et `cloudflared.service`), garantissant la haute disponibilité de l'API Edge et la connectivité Zero Trust avec Cloudflare sans ouverture de ports entrants.
+
+| Démons Systemd Actifs sur Raspberry Pi | Statut Sain du Tunnel Cloudflare Zero Trust |
+| :---: | :---: |
+| ![Activation Services Systemd](<screenshots/activating inpt-maste-node  and  cloudflared serivices in rasperry pi.jpg>) | ![Tunnel Cloudflare Healthy](<screenshots/cloudflare  tunnel  healthy state  in dashboard.png>) |
+
+---
+
+## 🛠️ Stack Technique & Justification des Choix
+
+* **Reverse Proxy & TLS — Nginx (Alpine) :** Choisi pour son empreinte mémoire minime (<15 Mo), son débit élevé et sa fiabilité pour gérer la terminaison TLS 1.3, le forçage HTTPS, le HSTS et les en-têtes CSP stricts.
+* **Backend — Spring Boot 3.3 (Java 21) & Spring Security 6 :** Retenu pour sa robustesse d'entreprise, sa gestion avancée du multithreading (Virtual Threads Java 21) et son écosystème mature garantissant une séparation stricte des couches (Controller, Service, Repository).
+* **Nœud Maître (Edge) — Raspberry Pi 4 (ARM64) & FastAPI (Python 3) :** Le Raspberry Pi 4 offre une plateforme matérielle réelle basse consommation émulant un nœud bare-metal ; FastAPI a été sélectionné pour ses performances asynchrones natives et sa simplicité d'interaction directe avec les scripts système Bash Linux.
+* **Connectivité Zero Trust — Cloudflare Tunnel (`cloudflared`) :** Élimine l'ouverture de ports entrants sur la box / pare-feu (aucun risque de scan de ports) et contourne l'isolation Wi-Fi universitaire grâce à un tunnel chiffré sortant sécurisé vers le domaine public.
+* **Frontend — React 18 & Vite :** Vite procure un rechargement à chaud (HMR) instantané et des builds légers ; React 18 permet une interface réactive avec gestion fine des états en temps réel (streaming de logs, télémétrie matérielle, terminal Web SSH).
+* **Base de Données — PostgreSQL 16 (Identifiants UUIDv7) :** SGBD relationnel garantissant la conformité ACID complète ; les UUIDv7 combinent un timestamp temporel et de l'aléa cryptographique, éliminant le risque d'énumération d'URL tout en préservant l'efficacité des index B-Tree.
+* **Gestion des Sessions — Redis 7 :** Base clé-valeur in-memory ultra-rapide permettant des sessions distribuées découplées du cycle de vie du conteneur applicatif, avec révocation instantanée côté serveur (anti-rejeu).
+* **Hachage Cryptographique — Argon2id :** Vainqueur officiel de la *Password Hashing Competition*, recommandé par l'ANSSI, le NIST et l'OWASP pour sa résistance maximale aux attaques par GPU, FPGA et canaux auxiliaires grâce à sa dureté mémoire et temporelle configurable.
+* **Orchestration Locale — Docker Compose :** Standardise l'intégralité de la chaîne de services (Nginx, Backend, Frontend, Postgres, Redis) dans des conteneurs isolés et reproductibles sur n'importe quel environnement de développement.
 
 ---
 
