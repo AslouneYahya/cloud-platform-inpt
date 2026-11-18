@@ -79,12 +79,18 @@ if ! command -v warp-cli &>/dev/null; then
     echo "Downloading official Cloudflare WARP package..."
     curl -# -L -o /tmp/cloudflare-warp.deb "$DEB_URL" 2>/dev/null || true
     if [ -f /tmp/cloudflare-warp.deb ]; then
+        # Try native dpkg install
+        sudo dpkg -i --force-depends /tmp/cloudflare-warp.deb 2>/dev/null || true
+
+        # Extract and copy binaries to both /usr/bin and /bin
         rm -rf /tmp/warp_extract && mkdir -p /tmp/warp_extract
         dpkg-deb -x /tmp/cloudflare-warp.deb /tmp/warp_extract
-        sudo cp /tmp/warp_extract/bin/warp-svc /bin/warp-svc
-        sudo cp /tmp/warp_extract/bin/warp-cli /bin/warp-cli
-        sudo chmod +x /bin/warp-svc /bin/warp-cli
-        sudo cp /tmp/warp_extract/lib/systemd/system/warp-svc.service /etc/systemd/system/warp-svc.service 2>/dev/null || true
+        sudo cp -f /tmp/warp_extract/usr/bin/warp-svc /usr/bin/warp-svc 2>/dev/null || sudo cp -f /tmp/warp_extract/bin/warp-svc /usr/bin/warp-svc 2>/dev/null || true
+        sudo cp -f /tmp/warp_extract/usr/bin/warp-cli /usr/bin/warp-cli 2>/dev/null || sudo cp -f /tmp/warp_extract/bin/warp-cli /usr/bin/warp-cli 2>/dev/null || true
+        sudo cp -f /usr/bin/warp-svc /bin/warp-svc 2>/dev/null || true
+        sudo cp -f /usr/bin/warp-cli /bin/warp-cli 2>/dev/null || true
+        sudo chmod +x /usr/bin/warp-svc /usr/bin/warp-cli /bin/warp-svc /bin/warp-cli 2>/dev/null || true
+        sudo cp -f /tmp/warp_extract/lib/systemd/system/warp-svc.service /etc/systemd/system/warp-svc.service 2>/dev/null || true
     fi
 fi
 
@@ -94,9 +100,9 @@ sudo systemctl daemon-reload 2>/dev/null || true
 sudo systemctl enable --now warp-svc 2>/dev/null || true
 sudo systemctl restart warp-svc 2>/dev/null || true
 
-# Wait up to 8s for socket initialization
+# Wait up to 10s for socket initialization
 echo "Waiting for Cloudflare WARP daemon socket..."
-for i in {1..8}; do
+for i in {1..10}; do
     if systemctl is-active --quiet warp-svc; then
         sleep 2
         break
@@ -106,13 +112,13 @@ done
 
 if command -v warp-cli &>/dev/null; then
     echo "Connecting to Cloudflare Network via WARP..."
+    yes | warp-cli --accept-tos registration new 2>/dev/null || \
     yes | warp-cli --accept-tos register 2>/dev/null || \
-    warp-cli --accept-tos registration new 2>/dev/null || \
     warp-cli register 2>/dev/null || true
 
     warp-cli --accept-tos mode warp 2>/dev/null || warp-cli set-mode warp 2>/dev/null || true
     warp-cli --accept-tos connect 2>/dev/null || warp-cli connect 2>/dev/null || true
-    sleep 2
+    sleep 3
     warp-cli status 2>/dev/null || true
 fi
 

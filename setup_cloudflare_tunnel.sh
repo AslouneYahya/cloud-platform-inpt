@@ -45,34 +45,48 @@ echo "Extracting official binaries..."
 rm -rf /tmp/warp_extract && mkdir -p /tmp/warp_extract
 dpkg-deb -x /tmp/cloudflare-warp.deb /tmp/warp_extract
 
-# Binaries in package are located at /bin/warp-svc and /bin/warp-cli
-sudo cp /tmp/warp_extract/bin/warp-svc /bin/warp-svc
-sudo cp /tmp/warp_extract/bin/warp-cli /bin/warp-cli
-sudo chmod +x /bin/warp-svc /bin/warp-cli
+# Try native dpkg install first
+sudo dpkg -i --force-depends /tmp/cloudflare-warp.deb 2>/dev/null || true
+
+# Guarantee binaries are in both /usr/bin and /bin (where systemd expects them)
+sudo cp -f /tmp/warp_extract/usr/bin/warp-svc /usr/bin/warp-svc 2>/dev/null || sudo cp -f /tmp/warp_extract/bin/warp-svc /usr/bin/warp-svc 2>/dev/null || true
+sudo cp -f /tmp/warp_extract/usr/bin/warp-cli /usr/bin/warp-cli 2>/dev/null || sudo cp -f /tmp/warp_extract/bin/warp-cli /usr/bin/warp-cli 2>/dev/null || true
+sudo cp -f /usr/bin/warp-svc /bin/warp-svc 2>/dev/null || true
+sudo cp -f /usr/bin/warp-cli /bin/warp-cli 2>/dev/null || true
+sudo chmod +x /usr/bin/warp-svc /usr/bin/warp-cli /bin/warp-svc /bin/warp-cli 2>/dev/null || true
 
 # Ensure required state directories exist
 sudo mkdir -p /var/lib/cloudflare-warp /etc/cloudflare-warp /run/cloudflare-warp 2>/dev/null || true
 
 # Copy official systemd service
-sudo cp /tmp/warp_extract/lib/systemd/system/warp-svc.service /etc/systemd/system/warp-svc.service
+sudo cp -f /tmp/warp_extract/lib/systemd/system/warp-svc.service /etc/systemd/system/warp-svc.service 2>/dev/null || true
 
 echo "Starting official Cloudflare WARP service..."
 sudo systemctl daemon-reload
 sudo systemctl enable --now warp-svc
 sudo systemctl restart warp-svc
-sleep 5
+
+# Wait for daemon socket initialization
+echo "Waiting for Cloudflare WARP daemon to be ready..."
+for i in {1..10}; do
+    if systemctl is-active --quiet warp-svc; then
+        sleep 2
+        break
+    fi
+    sleep 1
+done
 
 echo "=== [3/5] Activating & Connecting Cloudflare WARP ==="
 # Accept privacy policy automatically for both new and legacy warp-cli
+yes | warp-cli --accept-tos registration new 2>/dev/null || \
 yes | warp-cli --accept-tos register 2>/dev/null || \
-yes | warp-cli register 2>/dev/null || \
-warp-cli --accept-tos registration new 2>/dev/null || true
+warp-cli register 2>/dev/null || true
 
 warp-cli --accept-tos mode warp 2>/dev/null || warp-cli set-mode warp 2>/dev/null || true
 echo "Connecting to Cloudflare WARP network..."
 warp-cli --accept-tos connect 2>/dev/null || warp-cli connect 2>/dev/null || true
-sleep 4
-warp-cli status || true
+sleep 3
+warp-cli status 2>/dev/null || true
 
 echo "=== [4/5] Installing & Starting Cloudflare Tunnel ==="
 sudo rm -f /etc/systemd/system/cloudflared.service 2>/dev/null || true
