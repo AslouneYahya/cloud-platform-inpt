@@ -14,7 +14,8 @@
 | **Sprint 1** | Socle d'Authentification Sécurisée (NIST/OWASP) & Infrastructure Docker | **Terminé (Checked)** | Semaine 1 |
 | **Sprint 2** | Orchestration Edge & Intégration Nœud Maître Physique (Raspberry Pi) | **Terminé (Checked)** | Semaine 2 |
 | **Sprint 3** | Télémétrie Matérielle Réelle, Streaming Logs AWS-style & Console Web SSH | **Terminé (Checked)** | Semaine 3 |
-| **Sprint 4** | Cluster Multi-Nœuds (Master/Slaves) & Virtualisation Matérielle Stricte KVM | **Planifié (En cours)** | Semaine 4 |
+| **Sprint 4** | Cluster Multi-Nœuds (Master/Worker) & Virtualisation Matérielle Stricte KVM | **Terminé (Checked)** | Semaine 4 |
+| **Sprint 5** | Décentralisation Multi-Workers (Pool Élastique) & Authentification OAuth2 (Google/GitHub) | **Planifié (En cours)** | Semaine 5 |
 
 ---
 
@@ -74,21 +75,43 @@
 
 ---
 
-## 🚀 Sprint 4 — Cluster Multi-Nœuds (Master/Slaves) & Virtualisation Matérielle Stricte KVM
-**Objectif :** Étendre l'infrastructure en un véritable cluster distribué multi-nœuds et activer la virtualisation matérielle stricte assistée par le processeur.
+## 🏁 Sprint 4 — Cluster Multi-Nœuds (Master/Worker) & Virtualisation Matérielle Stricte KVM
+**Objectif :** Étendre l'infrastructure en un véritable cluster distribué multi-nœuds et activer la virtualisation matérielle stricte assistée par le processeur ARM64.
 
-* [ ] **US4.1 : Interconnexion et Enrôlement des Nœuds Esclaves (Worker / Slave Nodes)**
-  * Protocole de communication et d'enregistrement des nœuds workers auprès du Nœud Maître.
-  * Découverte automatique et synchronisation d'état du cluster distribué.
-* [ ] **US4.2 : Moteur d'Ordonnancement et d'Équilibrage de Charge (Cluster Scheduler)**
-  * Algorithme de placement intelligent des VMs sur le nœud le plus adapté selon la disponibilité RAM/CPU.
-  * Visualisation globale de la topologie du cluster sur le Dashboard.
-* [ ] **US4.3 : Virtualisation Matérielle Stricte KVM/QEMU (ARM64)**
-  * Exploitation de l'accélération matérielle `/dev/kvm` native du processeur ARM Cortex-A72.
-  * Instanciation de véritables machines virtuelles indépendantes à partir d'images officielles Cloud-Init (`.qcow2`).
-* [ ] **US4.4 : Isolation Réseau Complète via Ponts Virtuels (Bridge & virtio-net)**
-  * Création d'interfaces réseau virtuelles isolées (`veth` / TAP) et sous-réseau étanche (`netns`) pour chaque VM.
-  * Étanchéité réseau stricte lors de l'exécution de commandes réseau (`ip addr`, routage dédié).
-* [ ] **US4.5 : Haute Disponibilité et Tolérance aux Pannes (Heartbeat & Failover)**
-  * Mécanisme de battement de cœur (*heartbeat*) pour surveiller l'état de santé de chaque nœud du cluster.
-  * Réallocation automatique des instances en cas de déconnexion imprévue d'un Worker Node.
+* [x] **US4.1 : Enrôlement Dynamique du Worker Node & Découverte Automatique**
+  * Protocole d'auto-enregistrement du Worker Node auprès du Master Node avec battements de cœur périodiques (*Heartbeats*).
+  * Auto-détection de l'adresse IP physique LAN (`eth0`/`wlan0`) en ignorant les interfaces virtuelles tunnels (`172.16.x.x`).
+* [x] **US4.2 : Contournement de l'AP Isolation via Outbound Tunnel Task Queue**
+  * Implémentation d'un patron de file de tâches asynchrone sortante (*Long-Polling*) à travers Cloudflare Tunnel Zero Trust (`/poll` et `/complete`).
+  * Permet la communication fiable entre nœuds sur le Wi-Fi universitaire de l'INPT sans requêtes directes LAN ni ports ouverts.
+* [x] **US4.3 : Ordonnanceur Intelligent & Équilibrage de Charge (Least-Loaded Scheduler)**
+  * Algorithme de placement dynamique choisissant automatiquement le nœud le moins chargé (RAM/CPU) avec option de ciblage explicite d'un nœud.
+  * Agrégation multi-nœuds en direct sur le Dashboard Master Node et la console locale.
+* [x] **US4.4 : Virtualisation Matérielle Native KVM/QEMU sur ARM64**
+  * Exploitation de l'accélération matérielle native `/dev/kvm` via les drapeaux `-enable-kvm -cpu host` de QEMU ARM64.
+  * Allocation de disques différentiels virtuels QCOW2 (Copy-on-Write) légers et rapides.
+* [x] **US4.5 : Isolation Réseau Virtuelle & Streaming Temps Réel**
+  * Isolation réseau par interface virtuelle TAP/virtio-net et attribution dynamique d'adresses IP privées (`10.244.10.x`).
+  * Suivi de bout en bout des logs de déploiement en direct et monitoring des instances hébergées sur le Worker.
+
+---
+
+## 🚀 Sprint 5 — Décentralisation Multi-Workers (Pool Élastique) & Authentification OAuth2 (Google / GitHub)
+**Objectif :** Transformer le cluster en un système totalement décentralisé sans dépendance à un nœud worker fixe (support multi-workers à grande échelle) et moderniser l'authentification avec le support OAuth2 / OIDC (Google et GitHub).
+
+* [ ] **US5.1 : Support Multi-Workers Simultanés (Scale-Out Horizontal N > 1)**
+  * Capacité d'enrôler dynamiquement plusieurs nœuds workers simultanés (`worker-01`, `worker-02`, ..., `worker-N`) au sein du cluster.
+  * Agrégation de la capacité de calcul globale (CPU/RAM cumulés) et supervision consolidée de l'ensemble de la flotte de nœuds.
+* [ ] **US5.2 : Architecture Décentralisée sans Nœud Fixe (Pool Élastique de Workers)**
+  * Découplage complet de l'orchestration : élimination de tout adressage ou ciblage statique d'un nœud worker prédéterminé.
+  * Système de file de tâches distribuée (*Task Queue*) où n'importe quel worker disponible du pool peut consommer, exécuter et acquitter les ordres de provisionnement de manière autonome.
+  * Auto-exclusion (*Healthcheck timeout*) et réassignation automatique des instances en cas de défaillance imprévue d'un nœud worker.
+* [ ] **US5.3 : Authentification Sociale OAuth2 / OIDC avec Google Sign-In**
+  * Intégration de Spring Security OAuth2 Client pour la connexion via un compte Google (`@inpt.ma` ou personnel).
+  * Validation cryptographique des ID Tokens, mapping automatique du profil utilisateur et persistance en base de données PostgreSQL.
+* [ ] **US5.4 : Authentification Sociale OAuth2 avec GitHub Sign-In**
+  * Intégration du fournisseur d'identité GitHub OAuth2 pour les profils développeurs et élèves-ingénieurs.
+  * Récupération sécurisée des emails vérifiés, gestion des permissions et conformité stricte aux exigences OWASP.
+* [ ] **US5.5 : Fédération d'Identité Unifiée & Hybridation de Session (Argon2id + OAuth2)**
+  * Expérience de connexion unifiée sur le portail Web React : choix entre l'authentification locale classique (Argon2id) et la connexion sociale (Google / GitHub en un clic).
+  * Synchronisation transparente avec le gestionnaire de sessions distribuées Redis 7, avec jetons sécurisés et révocation centralisée anti-rejeu.

@@ -98,7 +98,7 @@ Orchestration distribuée multi-nœuds avec séparation stricte entre le Master 
 
 | Dashboard Central & Télémétrie Instance Active | Preuve d'Exécution Matérielle KVM (`-enable-kvm`) sur Worker |
 | :---: | :---: |
-| ![Instance Active sur Worker](screenshots/sprint4/Capture%20d'%C3%A9cran%202026-11-18%20232131.png) | ![Exécution KVM sur Raspberry Pi Worker](screenshots/sprint4/WhatsApp%20Image%202026-11-18%20at%2023.28.48.jpeg) |
+| ![Instance Active sur Worker](screenshots/sprint4/04-vm-active-worker-telemetry.png) | ![Exécution KVM sur Raspberry Pi Worker](screenshots/sprint4/08-worker-kvm-hardware-execution.jpeg) |
 
 👉 **[Consulter le rapport complet et la galerie de preuves du Sprint 4 (8 captures décortiquées)](SPRINT4_README.md)** *(également disponible dans [screenshots/sprint4/README.md](screenshots/sprint4/README.md))*
 
