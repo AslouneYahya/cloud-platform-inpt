@@ -46,6 +46,7 @@ fi
 echo "Installing KVM, QEMU & Virtualization Packages..."
 sudo apt-get update -o Acquire::Check-Valid-Until=false -y || true
 sudo apt-get install --fix-missing -y \
+    ca-certificates \
     qemu-system-arm \
     qemu-utils \
     cloud-image-utils \
@@ -56,6 +57,7 @@ sudo apt-get install --fix-missing -y \
     curl \
     git \
     socat || true
+sudo update-ca-certificates 2>/dev/null || true
 
 if [ -c /dev/kvm ]; then
     echo "✅ Hardware KVM (/dev/kvm) detected on this Raspberry Pi!"
@@ -75,9 +77,11 @@ fi
 # Ensure required state directories exist
 sudo mkdir -p /var/lib/cloudflare-warp /etc/cloudflare-warp /run/cloudflare-warp 2>/dev/null || true
 
-if ! command -v warp-cli &>/dev/null; then
-    echo "Downloading official Cloudflare WARP package..."
-    curl -# -L -o /tmp/cloudflare-warp.deb "$DEB_URL" 2>/dev/null || true
+if [ ! -f /usr/bin/warp-svc ] || [ ! -f /usr/bin/warp-cli ]; then
+    echo "Configuring official Cloudflare WARP daemon binaries..."
+    if [ ! -s /tmp/cloudflare-warp.deb ]; then
+        curl -# -L -o /tmp/cloudflare-warp.deb "$DEB_URL" 2>/dev/null || true
+    fi
     if [ -f /tmp/cloudflare-warp.deb ]; then
         # Try native dpkg install
         sudo dpkg -i --force-depends /tmp/cloudflare-warp.deb 2>/dev/null || true

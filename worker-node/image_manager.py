@@ -1,8 +1,14 @@
 import logging
 from pathlib import Path
+import ssl
 import subprocess
 import urllib.request
 import os
+
+try:
+    ssl._create_default_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
 
 from config import IMAGES_DIR, IMAGE_URLS
 

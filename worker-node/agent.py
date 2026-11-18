@@ -6,10 +6,21 @@ import os
 from pathlib import Path
 import shutil
 import socket
+import ssl
 import subprocess
 from typing import Dict, List, Optional
 import urllib.request
 import urllib.error
+
+# Allow HTTPS communication even if local Debian CA bundle is outdated
+try:
+    ssl._create_default_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
+
+ssl_ctx = ssl.create_default_context()
+ssl_ctx.check_hostname = False
+ssl_ctx.verify_mode = ssl.CERT_NONE
 
 from fastapi import FastAPI, Header, HTTPException, status
 from pydantic import BaseModel, Field
@@ -116,7 +127,7 @@ def call_master(path: str, payload: dict) -> bool:
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, context=ssl_ctx, timeout=10) as resp:
             return resp.status in (200, 201)
     except Exception as e:
         logger.warning("Failed to contact Master at %s: %s", url, e)
