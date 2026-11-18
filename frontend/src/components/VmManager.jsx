@@ -33,6 +33,7 @@ export default function VmManager() {
   // Form fields
   const [name, setName] = useState('');
   const [os, setOs] = useState('Ubuntu 22.04 LTS');
+  const [targetNodeId, setTargetNodeId] = useState('');
   const [cpu, setCpu] = useState(1);
   const [ramMb, setRamMb] = useState(512);
   const [diskGb, setDiskGb] = useState(5);
@@ -173,6 +174,7 @@ export default function VmManager() {
       const payload = {
         name: name.trim(),
         os,
+        targetNodeId: targetNodeId || null,
         cpu: Number(cpu),
         ramMb: Number(ramMb),
         diskGb: Number(diskGb),
@@ -185,6 +187,7 @@ export default function VmManager() {
       setShowModal(false);
       // Reset form
       setName('');
+      setTargetNodeId('');
       setInitialPassword('');
       setSshPublicKey('');
 
@@ -928,6 +931,25 @@ export default function VmManager() {
                   <option value="Ubuntu 22.04 LTS">Ubuntu 22.04 LTS (Jammy Jellyfish)</option>
                   <option value="Debian 12 Bookworm">Debian 12 (Bookworm)</option>
                   <option value="Alpine Linux 3.19">Alpine Linux 3.19 (Léger)</option>
+                </select>
+              </div>
+
+              {/* Placement Cluster (Nœud Cible) */}
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#2d3748', marginBottom: '0.35rem' }}>
+                  Placement Cluster (Raspberry Pi cible)
+                </label>
+                <select
+                  value={targetNodeId}
+                  onChange={e => setTargetNodeId(e.target.value)}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', border: `1px solid ${BORDER_COLOR}`, borderRadius: '6px', backgroundColor: '#fff', boxSizing: 'border-box' }}
+                >
+                  <option value="">🤖 Automatique — Least-Loaded Scheduler</option>
+                  {clusterNodes.filter(n => n.status === 'ONLINE').map(n => (
+                    <option key={n.node_id} value={n.node_id}>
+                      {n.role === 'MASTER' ? '👑' : '🍓'} {n.node_id} ({n.role} • {n.lan_ip})
+                    </option>
+                  ))}
                 </select>
               </div>
 

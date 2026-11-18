@@ -216,7 +216,7 @@ def provision_vm(req: schemas.VmProvisionRequest, _: None = Header(None)):
         master_health = get_health().model_dump()
     except Exception:
         master_health = None
-    target_node = nodes.node_registry.schedule_target_node(req.ram_mb, master_health)
+    target_node = nodes.node_registry.schedule_target_node(req.ram_mb, master_health, req.target_node_id)
     target_node_id = target_node.get("node_id", config.CLUSTER_NODE_NAME)
 
     # 2. If target is an online Worker, forward execution over LAN

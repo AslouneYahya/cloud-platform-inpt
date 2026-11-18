@@ -169,13 +169,22 @@ class NodeRegistry:
                 return n
         return None
 
-    def schedule_target_node(self, ram_mb: int, master_health: Optional[dict] = None) -> dict:
+    def schedule_target_node(self, ram_mb: int, master_health: Optional[dict] = None, target_node_id: Optional[str] = None) -> dict:
         """
         Least-Loaded Scheduler:
         Picks the active node with enough free RAM that has the lowest RAM utilization percentage.
         Prefers Worker nodes over Master node so Master stays dedicated to orchestration.
+        If target_node_id is specified, routes directly to that node if it is online.
         """
         all_nodes = self.get_all(master_health)
+
+        if target_node_id:
+            for n in all_nodes:
+                if n["node_id"] == target_node_id or target_node_id.lower() in n["node_id"].lower():
+                    if n.get("status") == "ONLINE":
+                        logger.info("Explicit target node requested: '%s'", n["node_id"])
+                        return n
+
         online_candidates = []
 
         for node in all_nodes:
@@ -200,29 +209,45 @@ class NodeRegistry:
     def forward_request(self, node: dict, path: str, method: str = "POST", payload: Optional[dict] = None) -> dict:
         """
         Forwards VM operations to the Worker Node Agent over the local cluster LAN.
+        Tries physical LAN IP first, then mDNS hostname fallback.
         """
         lan_ip = node.get("lan_ip")
+        hostname = node.get("hostname")
         port = node.get("agent_port", 5001)
-        url = f"http://{lan_ip}:{port}{path}"
-        logger.info("Forwarding %s to Worker '%s' at %s", method, node["node_id"], url)
+
+        targets = []
+        if lan_ip and not lan_ip.startswith("172.16.") and lan_ip != "127.0.0.1":
+            targets.append(lan_ip)
+        if hostname:
+            targets.append(f"{hostname}.local")
+            targets.append(hostname)
+        if lan_ip and lan_ip not in targets:
+            targets.append(lan_ip)
 
         headers = {
             "Content-Type": "application/json",
-            "X-Cluster-Token": config.API_KEY
+            "X-Cluster-Token": config.API_KEY,
+            "User-Agent": "inpt-master/1.0"
         }
         data = json.dumps(payload).encode("utf-8") if payload else None
-        req = urllib.request.Request(url, data=data, headers=headers, method=method)
 
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                resp_body = resp.read().decode("utf-8")
-                return json.loads(resp_body) if resp_body else {"status": "SUCCESS"}
-        except urllib.error.HTTPError as e:
-            err_text = e.read().decode("utf-8")
-            logger.error("Worker %s HTTP %d error: %s", node["node_id"], e.code, err_text)
-            raise RuntimeError(f"Worker node error ({e.code}): {err_text}")
-        except Exception as e:
-            logger.error("Failed to connect to Worker %s at %s: %s", node["node_id"], url, e)
-            raise RuntimeError(f"Failed to communicate with worker {node['node_id']}: {e}")
+        last_err = None
+        for host in targets:
+            url = f"http://{host}:{port}{path}"
+            logger.info("Forwarding %s to Worker '%s' at %s", method, node["node_id"], url)
+            req = urllib.request.Request(url, data=data, headers=headers, method=method)
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    resp_body = resp.read().decode("utf-8")
+                    return json.loads(resp_body) if resp_body else {"status": "SUCCESS"}
+            except urllib.error.HTTPError as e:
+                err_text = e.read().decode("utf-8")
+                logger.error("Worker %s HTTP %d error: %s", node["node_id"], e.code, err_text)
+                raise RuntimeError(f"Worker node error ({e.code}): {err_text}")
+            except Exception as e:
+                last_err = e
+                logger.warning("Failed route to Worker %s at %s: %s (trying next target)", node["node_id"], url, e)
+
+        raise RuntimeError(f"Failed to communicate with worker {node['node_id']}: {last_err}")
 
 node_registry = NodeRegistry()

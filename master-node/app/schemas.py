@@ -11,6 +11,7 @@ class VmProvisionRequest(BaseModel):
     ssh_key: Optional[str] = None
     initial_password: Optional[str] = None
     open_ports: List[int] = Field(default_factory=lambda: [22])
+    target_node_id: Optional[str] = None
 
 class VmActionRequest(BaseModel):
     action: str = Field(..., description="'start', 'stop', or 'restart'")

@@ -46,22 +46,40 @@ app = FastAPI(
 # ── Dynamic System Telemetry ──────────────────────────────────────────────────
 
 def get_lan_ip() -> str:
-    """Detect LAN IP without hardcoding."""
+    """Detect real physical LAN IP (eth0/wlan0), skipping WARP tunnel ranges (172.16.x.x)."""
+    # 1. Check all IPs from hostname -I for a physical LAN IP (192.168.x.x, 10.x.x.x, etc.)
+    try:
+        proc = subprocess.run(["hostname", "-I"], stdout=subprocess.PIPE, text=True, timeout=2)
+        ips = proc.stdout.strip().split()
+        for ip in ips:
+            if ip.startswith("127.") or ip.startswith("169.254.") or ip.startswith("172.16."):
+                continue
+            return ip
+    except Exception:
+        pass
+
+    # 2. Check routing table for physical interface
+    try:
+        proc = subprocess.run(["ip", "route", "show"], stdout=subprocess.PIPE, text=True, timeout=2)
+        for line in proc.stdout.splitlines():
+            if "src " in line and ("eth0" in line or "wlan0" in line or "en" in line or "wl" in line):
+                src_ip = line.split("src ")[1].split()[0]
+                if not src_ip.startswith("172.16."):
+                    return src_ip
+    except Exception:
+        pass
+
+    # 3. Socket fallback
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
-        return ip
+        if not ip.startswith("172.16."):
+            return ip
     except Exception:
         pass
-    try:
-        proc = subprocess.run(["hostname", "-I"], stdout=subprocess.PIPE, text=True, timeout=2)
-        ips = proc.stdout.strip().split()
-        if ips:
-            return ips[0]
-    except Exception:
-        pass
+
     return "127.0.0.1"
 
 def get_cpu_temp() -> Optional[float]:
@@ -213,6 +231,7 @@ class VmProvisionReq(BaseModel):
     open_ports: List[int] = Field(default_factory=lambda: [22])
     ssh_key: Optional[str] = None
     initial_password: Optional[str] = None
+    target_node_id: Optional[str] = None
 
 class VmActionReq(BaseModel):
     action: str

@@ -125,7 +125,7 @@ public class VmService {
                 .diskGb(req.diskGb())
                 .status(VmStatus.PROVISIONING)
                 .ipAddress(null)
-                .nodeId(null)
+                .nodeId(req.targetNodeId() != null && !req.targetNodeId().isBlank() ? req.targetNodeId().trim() : null)
                 .sshPublicKey(hasSsh ? req.sshPublicKey().trim() : null)
                 .initialPassword(hasPassword ? req.initialPassword() : null)
                 .firewallRules(firewallRules)
@@ -234,7 +234,8 @@ public class VmService {
               "cpu": %d,
               "ram_mb": %d,
               "disk_gb": %d,
-              "open_ports": [%s]
+              "open_ports": [%s],
+              "target_node_id": %s
             }
             """,
             vm.getId(),
@@ -243,7 +244,8 @@ public class VmService {
             vm.getCpu(),
             vm.getRamMb(),
             vm.getDiskGb(),
-            vm.getFirewallRules() != null ? vm.getFirewallRules() : "22"
+            vm.getFirewallRules() != null ? vm.getFirewallRules() : "22",
+            vm.getNodeId() != null ? "\"" + vm.getNodeId() + "\"" : "null"
         );
 
         HttpRequest request = HttpRequest.newBuilder()

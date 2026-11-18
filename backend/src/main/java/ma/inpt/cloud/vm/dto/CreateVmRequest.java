@@ -34,5 +34,11 @@ public record CreateVmRequest(
 
     String initialPassword,
 
-    List<Integer> openPorts
-) {}
+    List<Integer> openPorts,
+
+    String targetNodeId
+) {
+    public CreateVmRequest(String name, String os, int cpu, int ramMb, int diskGb, String sshPublicKey, String initialPassword, List<Integer> openPorts) {
+        this(name, os, cpu, ramMb, diskGb, sshPublicKey, initialPassword, openPorts, null);
+    }
+}
