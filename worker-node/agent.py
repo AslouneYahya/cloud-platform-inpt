@@ -124,18 +124,48 @@ def get_disk_info() -> Dict[str, float]:
     except Exception:
         return {"total_gb": 28.5, "used_gb": 4.5, "free_gb": 24.0}
 
-def count_active_vms() -> int:
-    count = 0
+def get_local_vms() -> List[dict]:
+    """Inspect all KVM instances deployed on this Worker node."""
+    vms = []
     if config.VMS_DIR.exists():
         for vm_folder in config.VMS_DIR.iterdir():
-            if vm_folder.is_dir() and (vm_folder / "vm.conf").exists():
+            conf_file = vm_folder / "vm.conf"
+            if vm_folder.is_dir() and conf_file.exists():
                 try:
-                    conf = (vm_folder / "vm.conf").read_text()
-                    if "STATUS=RUNNING" in conf:
-                        count += 1
+                    vm_data = {
+                        "vm_id": vm_folder.name,
+                        "name": vm_folder.name,
+                        "os": "Linux ARM64",
+                        "cpu": 1,
+                        "ram_mb": 512,
+                        "disk_gb": 10,
+                        "ip": "10.244.x.y",
+                        "ports": "22",
+                        "status": "STOPPED",
+                        "node": config.NODE_ID,
+                        "created_at": "-"
+                    }
+                    for line in conf_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+                        if "=" in line:
+                            k, v = line.split("=", 1)
+                            k, v = k.strip().lower(), v.strip()
+                            if k == "id": vm_data["vm_id"] = v
+                            elif k == "name": vm_data["name"] = v
+                            elif k == "os": vm_data["os"] = v
+                            elif k == "cpu": vm_data["cpu"] = int(v) if v.isdigit() else 1
+                            elif k == "ram_mb": vm_data["ram_mb"] = int(v) if v.isdigit() else 512
+                            elif k == "disk_gb": vm_data["disk_gb"] = int(v) if v.isdigit() else 10
+                            elif k == "ip": vm_data["ip"] = v
+                            elif k == "ports": vm_data["ports"] = v
+                            elif k == "status": vm_data["status"] = v
+                            elif k == "created_at": vm_data["created_at"] = v
+                    vms.append(vm_data)
                 except Exception:
                     pass
-    return count
+    return vms
+
+def count_active_vms() -> int:
+    return sum(1 for v in get_local_vms() if v.get("status") == "RUNNING")
 
 # ── Master Registration & Heartbeat Client ───────────────────────────────────
 
@@ -191,7 +221,8 @@ async def heartbeat_loop():
             disk = get_disk_info()
             load = os.getloadavg()[0] if hasattr(os, "getloadavg") else 0.15
             temp = get_cpu_temp()
-            active_vms = count_active_vms()
+            local_vms = get_local_vms()
+            active_vms = sum(1 for v in local_vms if v.get("status") == "RUNNING")
 
             payload = {
                 "node_id": config.NODE_ID,
@@ -202,12 +233,13 @@ async def heartbeat_loop():
                 "ram_used_mb": mem["used_mb"],
                 "ram_total_mb": mem["total_mb"],
                 "disk_free_gb": disk["free_gb"],
-                "active_vms": active_vms
+                "active_vms": active_vms,
+                "hosted_vms": local_vms
             }
             call_master("/api/nodes/heartbeat", payload)
         except Exception as e:
             logger.debug("Heartbeat error: %s", e)
-        await asyncio.sleep(10)
+        await asyncio.sleep(5)
 
 @app.on_event("startup")
 async def startup_event():

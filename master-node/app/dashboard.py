@@ -131,6 +131,27 @@ def get_deployed_vms() -> List[Dict[str, Any]]:
     vms.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
     return vms
 
+def get_all_cluster_vms(cluster_nodes: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    """Aggregate deployed VMs from both Master and Worker nodes."""
+    all_vms = list(get_deployed_vms())
+    for vm in all_vms:
+        if not vm.get("node"):
+            vm["node"] = "master-rpi-01"
+
+    if cluster_nodes:
+        for node in cluster_nodes:
+            if node.get("role") == "WORKER":
+                node_name = node.get("node_id", "worker")
+                for vm in node.get("hosted_vms", []):
+                    if not any(v.get("vm_id") == vm.get("vm_id") for v in all_vms):
+                        vm_copy = dict(vm)
+                        vm_copy["node"] = node_name
+                        vm_copy["usage"] = calculate_real_usage(vm_copy)
+                        all_vms.append(vm_copy)
+
+    all_vms.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
+    return all_vms
+
 def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], cluster_nodes: Optional[List[Dict[str, Any]]] = None) -> str:
     """Render a standalone, high-performance web dashboard for the Master Node."""
     node_name = str(health.get("node_name", "raspberrypi"))
@@ -288,7 +309,12 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
                     <div class="flex items-center space-x-3">
                         <span class="text-xl">{os_icon}</span>
                         <div>
-                            <div class="font-bold text-white text-sm">{vm.get('name')}</div>
+                            <div class="font-bold text-white text-sm flex items-center gap-2">
+                                <span>{vm.get('name')}</span>
+                                <span class="text-[10px] font-mono px-2 py-0.5 rounded-full {'bg-amber-500/15 text-amber-400 border border-amber-500/30' if 'master' in str(vm.get('node', '')).lower() else 'bg-sky-500/15 text-sky-400 border border-sky-500/30'}">
+                                    📍 {vm.get('node', 'master-rpi-01')}
+                                </span>
+                            </div>
                             <div class="text-xs text-slate-400">{os_name}</div>
                         </div>
                     </div>
@@ -522,13 +548,13 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
         <section class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
             <div class="p-6 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h2 class="text-lg font-bold text-white">Consommation & État Réel des Instances</h2>
-                    <p class="text-xs text-slate-400 mt-1">Supervision de l'empreinte réelle en temps réel (CPU, RAM, Disque alloué vs consommé)</p>
+                    <h2 class="text-lg font-bold text-white">Consommation & État Réel des Instances (Master & Workers)</h2>
+                    <p class="text-xs text-slate-400 mt-1">Supervision de l'empreinte réelle en temps réel sur l'ensemble du cluster (CPU, RAM, Disque alloué vs consommé)</p>
                 </div>
 
                 <div class="flex items-center space-x-3">
                     <span class="text-xs font-semibold px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-lg text-slate-300">
-                        Total : {active_count} instance(s)
+                        Total : {active_count} instance(s) sur le cluster
                     </span>
                     <button onclick="location.reload()" class="text-xs bg-sky-600 hover:bg-sky-500 text-white font-semibold px-3 py-1.5 rounded-lg transition shadow-sm">
                         🔄 Actualiser

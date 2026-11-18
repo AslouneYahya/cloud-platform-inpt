@@ -88,8 +88,8 @@ def get_dashboard():
         }
 
     try:
-        vms = dashboard.get_deployed_vms()
         cluster_nodes = nodes.node_registry.get_all(health_data)
+        vms = dashboard.get_all_cluster_vms(cluster_nodes)
         html_content = dashboard.render_dashboard_html(health_data, vms, cluster_nodes)
         return HTMLResponse(content=html_content)
     except Exception as e:
@@ -98,8 +98,9 @@ def get_dashboard():
 
 @app.get("/api/cluster/vms")
 def get_cluster_vms():
-    """Return JSON list of all deployed VMs on this node."""
-    return {"status": "SUCCESS", "data": dashboard.get_deployed_vms()}
+    """Return JSON list of all deployed VMs across the entire cluster (Master + Workers)."""
+    cluster_nodes = nodes.node_registry.get_all()
+    return {"status": "SUCCESS", "data": dashboard.get_all_cluster_vms(cluster_nodes)}
 
 @app.get("/api/cluster/stats")
 def get_cluster_stats():
@@ -116,9 +117,10 @@ def get_cluster_stats():
             "disk_free_gb": 24.5,
             "active_vms": 2
         }
+    cluster_nodes = nodes.node_registry.get_all(health_data)
     return {
         "node": health_data,
-        "vms": dashboard.get_deployed_vms(),
+        "vms": dashboard.get_all_cluster_vms(cluster_nodes),
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 

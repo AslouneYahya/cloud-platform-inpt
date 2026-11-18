@@ -105,6 +105,7 @@ class NodeRegistry:
             "ram_usage_pct": ram_pct,
             "disk_free_gb": req.disk_free_gb,
             "active_vms": req.active_vms,
+            "hosted_vms": req.hosted_vms or [],
             "last_heartbeat": datetime.now(timezone.utc).isoformat()
         })
         return node

@@ -74,6 +74,7 @@ class NodeHeartbeatRequest(BaseModel):
     ram_total_mb: int
     disk_free_gb: float
     active_vms: int = 0
+    hosted_vms: Optional[List[dict]] = Field(default_factory=list)
 
 class NodeInfo(BaseModel):
     node_id: str
