@@ -5,35 +5,36 @@
 set -eo pipefail
 
 VM_ID=""
-VM_NAME=""
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --id) VM_ID="$2"; shift ;;
-        --name) VM_NAME="$2"; shift ;;
-        *) echo "Unknown parameter: $1" >&2; exit 1 ;;
+        *) shift ;;
     esac
     shift
 done
 
 if [ -z "$VM_ID" ]; then
-    echo "ERROR: --id is required." >&2
+    echo "ERROR=--id is required."
     exit 1
 fi
 
 RUNTIME_DIR="/var/lib/inpt-cloud/vms/${VM_ID}"
+PID_FILE="${RUNTIME_DIR}/qemu.pid"
 
-# Teardown LXD container if it exists
-if command -v lxc &>/dev/null && [ -n "$VM_NAME" ]; then
-    lxc stop "$VM_NAME" --force 2>/dev/null || true
-    lxc delete "$VM_NAME" 2>/dev/null || true
+# Terminate active QEMU process if running
+if [ -f "$PID_FILE" ]; then
+    PID=$(cat "$PID_FILE" 2>/dev/null || true)
+    if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+        kill -9 "$PID" 2>/dev/null || true
+    fi
 fi
 
-# Clean up runtime directory
+# Clean up runtime directory & CoW overlay disk
 if [ -d "$RUNTIME_DIR" ]; then
     rm -rf "$RUNTIME_DIR"
 fi
 
 echo "STATUS=SUCCESS"
 echo "VM_ID=${VM_ID}"
-echo "MESSAGE=VM ${VM_ID} resources released."
+echo "MESSAGE=VM ${VM_ID} destroyed and storage deallocated."

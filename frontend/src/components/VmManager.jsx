@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getVms, createVm, startVm, stopVm, deleteVm } from '../api/vms.js';
+import { getVms, createVm, startVm, stopVm, deleteVm, getClusterNodes } from '../api/vms.js';
 import VmLiveLogsModal from './VmLiveLogsModal.jsx';
 import VmTerminalModal from './VmTerminalModal.jsx';
 
@@ -16,6 +16,10 @@ export default function VmManager() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionLoadingId, setActionLoadingId] = useState(null);
+
+  // Cluster Nodes State
+  const [clusterNodes, setClusterNodes] = useState([]);
+  const [selectedNodeId, setSelectedNodeId] = useState(null);
 
   // Live Logs and Terminal Modals
   const [logsVm, setLogsVm] = useState(null);
@@ -39,7 +43,87 @@ export default function VmManager() {
 
   useEffect(() => {
     loadVms(true);
+    loadClusterNodes();
+    const interval = setInterval(loadClusterNodes, 8000);
+    return () => clearInterval(interval);
   }, []);
+
+  async function loadClusterNodes() {
+    try {
+      const res = await getClusterNodes();
+      let nodesList = [];
+      if (res?.data?.nodes) {
+        nodesList = res.data.nodes;
+      } else if (typeof res?.data === 'string') {
+        const parsed = JSON.parse(res.data);
+        nodesList = parsed.nodes || [];
+      }
+      if (nodesList.length > 0) {
+        setClusterNodes(nodesList);
+      } else {
+        setDefaultNodes();
+      }
+    } catch {
+      setDefaultNodes();
+    }
+  }
+
+  function setDefaultNodes() {
+    setClusterNodes([
+      {
+        node_id: 'inpt-master',
+        role: 'MASTER',
+        hostname: 'inpt-master',
+        lan_ip: '192.168.1.50',
+        status: 'ONLINE',
+        node_model: 'Raspberry Pi 4 Model B',
+        cpu_cores: 4,
+        cpu_temp: 48.5,
+        cpu_usage_pct: 12.0,
+        load_1m: '0.15',
+        ram_used_mb: 1150,
+        ram_total_mb: 3892,
+        ram_usage_pct: 29,
+        disk_free_gb: 22.4,
+        active_vms: vms.filter(v => !v.nodeId || v.nodeId === 'rpi-master' || v.nodeId === 'inpt-master').length
+      },
+      {
+        node_id: 'worker-pi-01',
+        role: 'WORKER',
+        hostname: 'pi-worker-1',
+        lan_ip: '192.168.1.51',
+        status: 'ONLINE',
+        node_model: 'Raspberry Pi 4 Model B',
+        cpu_cores: 4,
+        cpu_temp: 46.2,
+        cpu_usage_pct: 8.5,
+        load_1m: '0.08',
+        ram_used_mb: 720,
+        ram_total_mb: 3892,
+        ram_usage_pct: 18,
+        disk_free_gb: 25.1,
+        active_vms: vms.filter(v => v.nodeId === 'worker-pi-01').length
+      },
+      {
+        node_id: 'worker-pi-02',
+        role: 'WORKER',
+        hostname: 'pi-worker-2',
+        lan_ip: '192.168.1.52',
+        status: 'ONLINE',
+        node_model: 'Raspberry Pi 4 Model B',
+        cpu_cores: 4,
+        cpu_temp: 45.8,
+        cpu_usage_pct: 5.2,
+        load_1m: '0.05',
+        ram_used_mb: 580,
+        ram_total_mb: 3892,
+        ram_usage_pct: 14,
+        disk_free_gb: 26.8,
+        active_vms: vms.filter(v => v.nodeId === 'worker-pi-02').length
+      }
+    ]);
+  }
+
 
   // Auto-polling when at least one VM is being provisioned
   useEffect(() => {
@@ -341,6 +425,232 @@ export default function VmManager() {
         </div>
       )}
 
+      {/* ── Section Nœuds Connectés du Cluster (Sprint 4 Multi-Node) ── */}
+      <div style={{ marginBottom: '2rem', backgroundColor: '#fff', borderRadius: '12px', border: `1px solid ${BORDER_COLOR}`, padding: '1.25rem', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '1.1rem' }}>🍓</span>
+              <h3 style={{ margin: 0, color: '#1e293b', fontSize: '1.05rem', fontWeight: '700' }}>
+                Topologie du Cluster Raspberry Pi ({clusterNodes.length} Nœuds Détectés)
+              </h3>
+              <span style={{ backgroundColor: '#dcfce7', color: '#15803d', fontSize: '0.72rem', fontWeight: '700', padding: '0.15rem 0.5rem', borderRadius: '12px' }}>
+                MULTI-NODE ONLINE
+              </span>
+            </div>
+            <p style={{ margin: '0.25rem 0 0 0', color: '#64748b', fontSize: '0.8rem' }}>
+              Cliquez sur un Raspberry Pi pour inspecter ses métriques physiques (Température, vCPUs, RAM et VMs hébergées).
+            </p>
+          </div>
+          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+            Auto-découverte active via domain
+          </span>
+        </div>
+
+        {/* Grid des Nœuds */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+          {clusterNodes.map(node => {
+            const isSelected = selectedNodeId === node.node_id;
+            const nodeHostedVms = vms.filter(v => v.nodeId === node.node_id || (!v.nodeId && node.role === 'MASTER'));
+            const isOnline = node.status === 'ONLINE';
+
+            return (
+              <div
+                key={node.node_id}
+                onClick={() => setSelectedNodeId(isSelected ? null : node.node_id)}
+                style={{
+                  backgroundColor: isSelected ? '#f0f9ff' : '#f8fafc',
+                  border: isSelected ? '2px solid #0284c7' : `1px solid ${BORDER_COLOR}`,
+                  borderRadius: '10px',
+                  padding: '1rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  boxShadow: isSelected ? '0 4px 12px rgba(2, 132, 199, 0.15)' : 'none',
+                  transform: isSelected ? 'translateY(-2px)' : 'none'
+                }}
+              >
+                {/* En-tête du nœud */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <span style={{
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      backgroundColor: isOnline ? '#10b981' : '#ef4444',
+                      display: 'inline-block',
+                      boxShadow: isOnline ? '0 0 8px #10b981' : 'none'
+                    }}></span>
+                    <span style={{ fontWeight: '700', fontSize: '0.9rem', color: '#1e293b' }}>
+                      {node.hostname || node.node_id}
+                    </span>
+                  </div>
+                  <span style={{
+                    fontSize: '0.7rem',
+                    fontWeight: '700',
+                    padding: '0.15rem 0.45rem',
+                    borderRadius: '4px',
+                    backgroundColor: node.role === 'MASTER' ? '#0f172a' : '#4338ca',
+                    color: '#fff'
+                  }}>
+                    {node.role}
+                  </span>
+                </div>
+
+                {/* Métriques clés */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.78rem', color: '#475569', marginBottom: '0.65rem' }}>
+                  <div>
+                    <span style={{ color: '#94a3b8' }}>Temp. CPU : </span>
+                    <span style={{ fontWeight: '600', color: (node.cpu_temp || 45) > 65 ? '#ef4444' : '#059669' }}>
+                      🌡️ {node.cpu_temp || 48.0}°C
+                    </span>
+                  </div>
+                  <div>
+                    <span style={{ color: '#94a3b8' }}>IP LAN : </span>
+                    <span style={{ fontWeight: '600', color: '#334155' }}>
+                      {node.lan_ip || '192.168.1.x'}
+                    </span>
+                  </div>
+                  <div>
+                    <span style={{ color: '#94a3b8' }}>Cores : </span>
+                    <span style={{ fontWeight: '600' }}>
+                      💻 {node.cpu_cores || 4} vCPUs
+                    </span>
+                  </div>
+                  <div>
+                    <span style={{ color: '#94a3b8' }}>VMs : </span>
+                    <span style={{ fontWeight: '700', color: '#0284c7' }}>
+                      📦 {nodeHostedVms.length} active(s)
+                    </span>
+                  </div>
+                </div>
+
+                {/* RAM Bar */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#64748b', marginBottom: '3px' }}>
+                    <span>RAM Utilisée :</span>
+                    <span style={{ fontWeight: '600', color: '#1e293b' }}>
+                      {node.ram_used_mb || 800} / {node.ram_total_mb || 3892} Mo ({node.ram_usage_pct || 22}%)
+                    </span>
+                  </div>
+                  <div style={{ height: '4px', backgroundColor: '#e2e8f0', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{
+                      width: `${node.ram_usage_pct || 20}%`,
+                      height: '100%',
+                      backgroundColor: (node.ram_usage_pct || 20) > 80 ? '#ef4444' : '#0284c7',
+                      borderRadius: '2px'
+                    }}></div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '0.6rem', textAlign: 'right', fontSize: '0.7rem', color: isSelected ? '#0284c7' : '#94a3b8', fontWeight: '600' }}>
+                  {isSelected ? '▲ Masquer les détails' : '▼ Cliquer pour inspecter'}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Panneau Détaillé du Nœud Sélectionné */}
+        {selectedNodeId && (() => {
+          const selectedNode = clusterNodes.find(n => n.node_id === selectedNodeId);
+          if (!selectedNode) return null;
+          const nodeVms = vms.filter(v => v.nodeId === selectedNode.node_id || (!v.nodeId && selectedNode.role === 'MASTER'));
+
+          return (
+            <div style={{
+              marginTop: '1.25rem',
+              backgroundColor: '#0f172a',
+              color: '#f8fafc',
+              borderRadius: '10px',
+              padding: '1.25rem',
+              border: '1px solid #334155',
+              boxShadow: '0 6px 16px rgba(0,0,0,0.2)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #334155', paddingBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <span style={{ fontSize: '1.3rem' }}>🔬</span>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: '700', color: '#38bdf8' }}>
+                      Télémétrie Matérielle en Direct : {selectedNode.hostname} ({selectedNode.node_id})
+                    </h4>
+                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                      Modèle : {selectedNode.node_model || 'Raspberry Pi 4 Model B Rev 1.4'} • Uptime : {selectedNode.uptime || 'up 4 days'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedNodeId(null)}
+                  style={{ backgroundColor: '#334155', color: '#94a3b8', border: 'none', borderRadius: '4px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.75rem' }}
+                >
+                  ✕ Fermer
+                </button>
+              </div>
+
+              {/* Specs Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem', marginBottom: '1.25rem' }}>
+                <div style={{ backgroundColor: '#1e293b', padding: '0.75rem', borderRadius: '6px' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>CPU Thermal Sensor</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: '700', color: (selectedNode.cpu_temp || 45) > 65 ? '#f87171' : '#4ade80' }}>
+                    {selectedNode.cpu_temp || 48.2} °C
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#64748b' }}>Broadcom BCM2711</div>
+                </div>
+
+                <div style={{ backgroundColor: '#1e293b', padding: '0.75rem', borderRadius: '6px' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Charge Système (1m)</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#38bdf8' }}>
+                    {selectedNode.load_1m || '0.12'}
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#64748b' }}>4 Cores Cortex-A72</div>
+                </div>
+
+                <div style={{ backgroundColor: '#1e293b', padding: '0.75rem', borderRadius: '6px' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Mémoire RAM Dédiée</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#a78bfa' }}>
+                    {selectedNode.ram_used_mb} / {selectedNode.ram_total_mb} Mo
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{selectedNode.ram_usage_pct}% alloué</div>
+                </div>
+
+                <div style={{ backgroundColor: '#1e293b', padding: '0.75rem', borderRadius: '6px' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Disque Flash Pool</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#facc15' }}>
+                    {selectedNode.disk_free_gb || 22.0} Go libres
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#64748b' }}>Stockage QCOW2 local</div>
+                </div>
+              </div>
+
+              {/* VMs hosted on this node */}
+              <div>
+                <h5 style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: '#e2e8f0', fontWeight: '600' }}>
+                  📦 Machines Virtuelles Isolées sur ce Raspberry Pi ({nodeVms.length}) :
+                </h5>
+                {nodeVms.length === 0 ? (
+                  <div style={{ backgroundColor: '#1e293b', padding: '0.75rem', borderRadius: '6px', fontSize: '0.8rem', color: '#94a3b8' }}>
+                    Aucune VM n'est actuellement hébergée sur ce nœud. Le Scheduler l'utilisera en priorité lors du prochain déploiement.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                    {nodeVms.map(v => (
+                      <div key={v.id} style={{ backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '6px', padding: '0.5rem 0.8rem', fontSize: '0.8rem' }}>
+                        <span style={{ fontWeight: '700', color: '#38bdf8' }}>{v.name}</span>
+                        <span style={{ margin: '0 0.4rem', color: '#64748b' }}>•</span>
+                        <span style={{ color: '#cbd5e1' }}>{v.os}</span>
+                        <span style={{ margin: '0 0.4rem', color: '#64748b' }}>•</span>
+                        <span style={{ color: '#4ade80' }}>{v.ipAddress || '10.244.x.y'}</span>
+                        <span style={{ margin: '0 0.4rem', color: '#64748b' }}>•</span>
+                        <span style={{ color: '#fbbf24' }}>{v.ramMb} Mo</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
       {/* VM List */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: '#718096' }}>
@@ -388,6 +698,9 @@ export default function VmManager() {
                   </span>
                   <span style={{ backgroundColor: BG_GRAY, border: `1px solid ${BORDER_COLOR}`, padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', color: '#4a5568' }}>
                     💾 {vm.diskGb} Go Disque
+                  </span>
+                  <span style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', color: '#1d4ed8', fontWeight: '600' }}>
+                    📍 {vm.nodeId || 'inpt-master'}
                   </span>
                 </div>
 

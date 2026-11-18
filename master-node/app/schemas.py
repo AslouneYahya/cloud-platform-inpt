@@ -51,3 +51,47 @@ class VmExecResponse(BaseModel):
     stderr: Optional[str] = ""
     exit_code: int
     executed_at: str
+
+class NodeRegisterRequest(BaseModel):
+    node_id: str = Field(..., description="Unique node identifier, e.g. worker-pi-01")
+    hostname: str
+    lan_ip: str
+    agent_port: int = 5001
+    cpu_cores: int = 4
+    ram_total_mb: int
+    disk_total_gb: Optional[float] = 0.0
+    disk_free_gb: Optional[float] = 0.0
+    node_model: Optional[str] = "Raspberry Pi 4 Model B"
+
+class NodeHeartbeatRequest(BaseModel):
+    node_id: str
+    status: str = "ONLINE"
+    cpu_usage_pct: Optional[float] = 0.0
+    cpu_temp: Optional[float] = None
+    load_1m: Optional[str] = None
+    ram_used_mb: int
+    ram_total_mb: int
+    disk_free_gb: float
+    active_vms: int = 0
+
+class NodeInfo(BaseModel):
+    node_id: str
+    role: str = "WORKER"  # "MASTER" or "WORKER"
+    hostname: str
+    lan_ip: str
+    agent_port: int
+    status: str  # "ONLINE", "OFFLINE", "DEGRADED"
+    node_model: str = "Raspberry Pi 4 Model B"
+    cpu_cores: int
+    cpu_usage_pct: float = 0.0
+    cpu_temp: Optional[float] = None
+    load_1m: Optional[str] = None
+    ram_used_mb: int
+    ram_total_mb: int
+    ram_usage_pct: int = 0
+    disk_free_gb: float
+    disk_total_gb: Optional[float] = None
+    active_vms: int = 0
+    uptime: Optional[str] = None
+    last_heartbeat: str
+

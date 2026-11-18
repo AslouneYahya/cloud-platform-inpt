@@ -2,8 +2,8 @@
 
 **Projet d'Innovation — Institut National des Postes et Télécommunications (INPT)**  
 * **Étudiant :** Yahya ASLOUNE  
-* **Encadrante :** Pr. Safae DAHMANI  
-* **Période :** Année Universitaire 2026  
+* **Encadrantes :** Pr. Safae DAHMANI & Pr. Kaouthar BOUSSELAM  
+* **Période :** Année Universitaire 2026/2027  
 
 ---
 

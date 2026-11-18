@@ -55,3 +55,11 @@ export function getVmLogs(id) {
 export function executeVmCommand(id, command) {
   return apiClient.post(`/vms/${id}/exec`, { command });
 }
+
+/**
+ * Fetch all registered Cluster Nodes (Master + Workers) with live hardware telemetry
+ */
+export function getClusterNodes() {
+  return apiClient.get('/vms/cluster/nodes');
+}
+

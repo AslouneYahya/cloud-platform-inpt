@@ -6,7 +6,7 @@ from typing import Dict, Optional
 from fastapi import FastAPI, Header, HTTPException, status
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from app import config, dashboard, schemas
+from app import config, dashboard, nodes, schemas
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("master-node")
@@ -155,11 +155,85 @@ def get_health():
             active_vms=0
         )
 
+# ── Cluster Multi-Node Registration & Discovery ─────────────────────────────
+
+@app.post("/api/nodes/register", status_code=status.HTTP_201_CREATED)
+def register_node(req: schemas.NodeRegisterRequest, x_cluster_token: Optional[str] = Header(None)):
+    """Worker nodes call this through https://master.aslouneyahya.com on boot."""
+    verify_token(x_cluster_token)
+    registered = nodes.node_registry.register(req)
+    return {"status": "SUCCESS", "message": f"Worker node '{req.node_id}' registered", "data": registered}
+
+@app.post("/api/nodes/heartbeat")
+def node_heartbeat(req: schemas.NodeHeartbeatRequest, x_cluster_token: Optional[str] = Header(None)):
+    """Worker nodes report live telemetry every 5-10s."""
+    verify_token(x_cluster_token)
+    updated = nodes.node_registry.heartbeat(req)
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Node {req.node_id} not registered")
+    return {"status": "SUCCESS", "node_id": req.node_id}
+
+@app.get("/api/cluster/nodes")
+def get_cluster_nodes():
+    """Return all cluster nodes (Master + Workers) with live statuses and telemetry for clickable UI."""
+    try:
+        master_health = get_health().model_dump()
+    except Exception:
+        master_health = None
+    all_nodes = nodes.node_registry.get_all(master_health)
+    return {"status": "SUCCESS", "nodes": all_nodes}
+
+@app.get("/api/cluster/nodes/{node_id}")
+def get_cluster_node_detail(node_id: str):
+    """Return detailed metrics for a clicked Raspberry Pi node + list of its hosted VMs."""
+    try:
+        master_health = get_health().model_dump()
+    except Exception:
+        master_health = None
+    node = nodes.node_registry.get_node(node_id, master_health)
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Node {node_id} not found")
+
+    all_vms = dashboard.get_deployed_vms()
+    node_vms = [v for v in all_vms if v.get("node") == node_id or (node.get("role") == "MASTER" and (not v.get("node") or v.get("node") == config.CLUSTER_NODE_NAME))]
+
+    return {
+        "status": "SUCCESS",
+        "node": node,
+        "vms": node_vms
+    }
+
+# ── VM Provisioning with Least-Loaded Scheduler ──────────────────────────────
+
 @app.post("/vms", response_model=schemas.VmOperationResponse, status_code=status.HTTP_201_CREATED)
 def provision_vm(req: schemas.VmProvisionRequest, _: None = Header(None)):
-    """Translate Web API request into provisioning script on Raspberry Pi."""
-    logger.info("Received VM provisioning request: id=%s name=%s", req.vm_id, req.name)
+    """Schedule and provision VM on the best cluster node (Worker or Master)."""
+    logger.info("Received VM provisioning request: id=%s name=%s (ram=%dMB)", req.vm_id, req.name, req.ram_mb)
 
+    # 1. Ask scheduler to assign target node
+    try:
+        master_health = get_health().model_dump()
+    except Exception:
+        master_health = None
+    target_node = nodes.node_registry.schedule_target_node(req.ram_mb, master_health)
+    target_node_id = target_node.get("node_id", config.CLUSTER_NODE_NAME)
+
+    # 2. If target is an online Worker, forward execution over LAN
+    if target_node.get("role") == "WORKER" and target_node.get("status") == "ONLINE":
+        try:
+            worker_resp = nodes.node_registry.forward_request(target_node, "/vms", "POST", req.model_dump())
+            return schemas.VmOperationResponse(
+                status=worker_resp.get("status", "SUCCESS"),
+                vm_id=worker_resp.get("vm_id", req.vm_id),
+                ip_address=worker_resp.get("ip_address"),
+                node_id=target_node_id,
+                message=worker_resp.get("message", f"VM successfully deployed on Worker node {target_node_id}"),
+                output=worker_resp.get("output")
+            )
+        except Exception as e:
+            logger.error("Failed to provision on worker %s: %s. Falling back to Master.", target_node_id, e)
+
+    # 3. Local execution on Master
     ports_str = ",".join(str(p) for p in req.open_ports)
     args = [
         "--id", req.vm_id,
@@ -181,10 +255,11 @@ def provision_vm(req: schemas.VmProvisionRequest, _: None = Header(None)):
         status=data.get("status", "SUCCESS"),
         vm_id=data.get("vm_id", req.vm_id),
         ip_address=data.get("ip"),
-        node_id=data.get("node", config.CLUSTER_NODE_NAME),
-        message=data.get("message", "VM successfully created on Raspberry Pi node"),
+        node_id=config.CLUSTER_NODE_NAME,
+        message=data.get("message", "VM successfully created on Master node"),
         output=data.get("output")
     )
+
 
 @app.post("/vms/{vm_id}/action", response_model=schemas.VmOperationResponse)
 def vm_power_action(vm_id: str, req: schemas.VmActionRequest, _: None = Header(None)):

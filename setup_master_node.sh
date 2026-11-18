@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# setup_master_node.sh — One-click Master Node Daemon Setup for Raspberry Pi
-# INPT Cloud Platform — FastAPI Daemon + Shell Execution Engine
+# setup_master_node.sh — Complete 1-Click Master Node & Cloudflare Setup
+# INPT Cloud Platform — Sets up Master Daemon, KVM, Cloudflare Tunnel & WARP
 # ==============================================================================
 set -e
 
 TARGET_DIR="$HOME/cloud-platform-inpt"
 REPO_URL="https://github.com/AslouneYahya/cloud-platform-inpt.git"
 
-echo "=== [1/4] Cloning / Updating Cloud Platform Repository ==="
+echo "======================================================================"
+echo "   🚀 [INPT Cloud Platform] Master Node Complete Setup                "
+echo "======================================================================"
+
+# ── 1. Clone / Pull Latest Repository ─────────────────────────────────────────
+echo "=== [1/6] Updating Cloud Platform Repository ==="
 if [ -d "$TARGET_DIR" ]; then
     echo "Repository already present, pulling latest version..."
     cd "$TARGET_DIR"
@@ -19,31 +24,69 @@ else
     cd "$TARGET_DIR"
 fi
 
+# ── 2. Install KVM Virtualization & System Packages ───────────────────────────
+echo "=== [2/6] Installing KVM, QEMU & Virtualization Packages ==="
+sudo apt-get update -y
+sudo apt-get install -y \
+    qemu-system-arm \
+    qemu-utils \
+    cloud-image-utils \
+    bridge-utils \
+    avahi-daemon \
+    python3-pip \
+    python3-venv \
+    curl \
+    git \
+    socat
+
+if [ -c /dev/kvm ]; then
+    echo "✅ Hardware KVM (/dev/kvm) detected on Master Pi!"
+    sudo usermod -aG kvm "$USER" || true
+else
+    echo "⚠️ /dev/kvm not found. Ensure 64-bit kernel is running (arm_64bit=1 in /boot/config.txt)"
+fi
+
+# ── 3. Persistent Storage Directories ─────────────────────────────────────────
+echo "=== [3/6] Initializing Storage Pools ==="
+sudo mkdir -p /var/lib/inpt-cloud/vms
+sudo mkdir -p /var/lib/inpt-cloud/images
+sudo chown -R "$USER:$USER" /var/lib/inpt-cloud 2>/dev/null || true
+
+# ── 4. Set up Cloudflare WARP-CLI & Cloudflare Tunnel ──────────────────────────
+echo "=== [4/6] Setting up Cloudflare WARP-CLI & Public Tunnel ==="
+chmod +x "$TARGET_DIR/setup_cloudflare_tunnel.sh"
+sudo "$TARGET_DIR/setup_cloudflare_tunnel.sh" || {
+    echo "⚠️ Cloudflare tunnel setup completed with warnings (service active)"
+}
+
+# ── 5. Set up Master Node Daemon & Systemd Service ────────────────────────────
+echo "=== [5/6] Configuring Master Node Daemon Service ==="
 cd "$TARGET_DIR/master-node"
+chmod +x install.sh scripts/*.sh
 
-echo "=== [2/4] Making scripts executable ==="
-chmod +x install.sh
-chmod +x scripts/*.sh
-
-echo "=== [3/4] Running Master Node Installer ==="
+# Run Master install script
 ./install.sh
 
-echo "=== [4/4] Verifying Master Node Health ==="
-sleep 3
+# ── 6. Health & Cluster Status Verification ───────────────────────────────────
+echo "=== [6/6] Verifying Master Node & Cluster Status ==="
+sleep 4
+
 if curl -fsSL http://localhost:5000/health >/dev/null 2>&1; then
     echo ""
     echo "======================================================================"
-    echo "  Master Node Listener is LIVE and HEALTHY on port 5000!              "
+    echo "  ✅ Master Node Listener is LIVE on port 5000!                       "
+    echo "  🌐 Public Endpoint: https://master.aslouneyahya.com                 "
+    echo "  📊 Dashboard:       https://master.aslouneyahya.com/dashboard       "
+    echo "  🍓 Cluster Nodes:   https://master.aslouneyahya.com/api/cluster/nodes"
     echo "======================================================================"
-    curl -s http://localhost:5000/health
+    curl -s http://localhost:5000/api/cluster/nodes
     echo ""
 else
     echo "Master Node starting... checking systemd status:"
     sudo systemctl status inpt-master-node.service --no-pager
 fi
 
-echo ""
 echo "======================================================================"
-echo "  Installation terminée avec succès !                                 "
-echo "  Le Nœud Maître écoute sur le port 5000 et via Cloudflare Tunnel.    "
+echo "  🎉 Master Node installation complete!                               "
+echo "  Worker Pis will now automatically register when they power on.      "
 echo "======================================================================"

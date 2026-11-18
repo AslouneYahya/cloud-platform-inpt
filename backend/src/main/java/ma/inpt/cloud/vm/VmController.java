@@ -201,4 +201,14 @@ public class VmController {
                     .body(ApiResponse.error(ex.getMessage()));
         }
     }
+
+    /**
+     * GET /api/vms/cluster/nodes — Return all active cluster nodes and live telemetry
+     */
+    @GetMapping("/cluster/nodes")
+    public ResponseEntity<String> getClusterNodes() {
+        return ResponseEntity.ok()
+                .header("Content-Type", "application/json")
+                .body(vmService.getClusterNodesJson());
+    }
 }

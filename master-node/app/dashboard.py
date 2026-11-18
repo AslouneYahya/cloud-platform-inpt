@@ -118,6 +118,7 @@ def get_deployed_vms() -> List[Dict[str, Any]]:
                         elif k == "ip": vm_data["ip"] = v
                         elif k == "ports": vm_data["ports"] = v
                         elif k == "status": vm_data["status"] = v
+                        elif k == "node": vm_data["node"] = v
                         elif k == "created_at": vm_data["created_at"] = v
             except Exception:
                 pass

@@ -1,0 +1,17 @@
+[Unit]
+Description=INPT Cloud Platform — Worker Node Hypervisor Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/inpt-cloud/worker-node
+Environment="MASTER_URL=https://master.aslouneyahya.com"
+Environment="CLUSTER_TOKEN=inpt-cluster-secret-2026"
+Environment="AGENT_PORT=5001"
+ExecStart=/opt/inpt-cloud/worker-node/venv/bin/python3 agent.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

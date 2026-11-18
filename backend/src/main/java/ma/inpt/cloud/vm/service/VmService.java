@@ -268,12 +268,21 @@ public class VmService {
                 }
             }
 
+            String node = "rpi-master";
+            if (body.contains("\"node_id\":") && !body.contains("\"node_id\":null")) {
+                int start = body.indexOf("\"node_id\":\"") + 11;
+                int end = body.indexOf("\"", start);
+                if (start > 10 && end > start) {
+                    node = body.substring(start, end);
+                }
+            }
+
             recordLog(vm.getId(), "DHCP_LEASE", "INFO", "Bail réseau DHCP accordé : " + ip + " attribué avec succès sur eth0.");
             recordLog(vm.getId(), "BOOT_COMPLETE", "SUCCESS",
-                    String.format("Machine virtuelle '%s' opérationnelle et joignable sur le port SSH 22. Statut : RUNNING.", vm.getName()));
+                    String.format("Machine virtuelle '%s' opérationnelle sur le nœud '%s' et joignable sur le port SSH 22. Statut : RUNNING.", vm.getName(), node));
 
             vm.setIpAddress(ip);
-            vm.setNodeId("rpi-master");
+            vm.setNodeId(node);
             vm.setStatus(VmStatus.RUNNING);
             vm.setErrorMessage(null);
             vmRepository.save(vm);
@@ -524,6 +533,28 @@ public class VmService {
             log.info("Master Node delete response: HTTP {} - {}", response.statusCode(), response.body());
         } catch (Exception e) {
             log.error("Failed to delete VM {} on Master Node", vmId, e);
+        }
+    }
+
+    /**
+     * Retrieve all connected cluster nodes (Master + Workers) and live hardware telemetry.
+     */
+    public String getClusterNodesJson() {
+        if (!masterNodeEnabled) {
+            return "{\"status\":\"SUCCESS\",\"nodes\":[]}";
+        }
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(masterNodeUrl + "/api/cluster/nodes"))
+                    .header("X-Cluster-Token", masterNodeApiKey)
+                    .GET()
+                    .timeout(Duration.ofSeconds(5))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            return response.body();
+        } catch (Exception e) {
+            log.warn("Failed to fetch cluster nodes from master: {}", e.getMessage());
+            return "{\"status\":\"ERROR\",\"nodes\":[],\"message\":\"" + e.getMessage() + "\"}";
         }
     }
 }
