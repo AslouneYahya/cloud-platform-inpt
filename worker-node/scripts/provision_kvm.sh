@@ -42,7 +42,16 @@ IMAGES_DIR="${BASE_STORAGE}/images"
 RUNTIME_DIR="${BASE_STORAGE}/vms/${VM_ID}"
 mkdir -p "$RUNTIME_DIR"
 
-# 1. Determine Golden Base Image
+# 1. Resource Pre-flight Checks
+AVAIL_RAM=$(free -m | awk '/^Mem:/{print $7}')
+if [ -n "$AVAIL_RAM" ] && [ "$AVAIL_RAM" -lt "$RAM" ]; then
+    echo "STATUS=FAILED"
+    echo "ERROR=Insufficient RAM on node. Requested: ${RAM}MB, Available: ${AVAIL_RAM}MB"
+    rm -rf "$RUNTIME_DIR"
+    exit 2
+fi
+
+# 2. Determine Golden Base Image & Create CoW Overlay Disk (< 0.2s)
 BASE_IMG="${IMAGES_DIR}/ubuntu-base.qcow2"
 if [[ "$VM_OS" =~ "Alpine" ]]; then
     BASE_IMG="${IMAGES_DIR}/alpine-base.qcow2"
@@ -56,9 +65,10 @@ if [ ! -f "$BASE_IMG" ]; then
     qemu-img create -f qcow2 "$BASE_IMG" 10G >/dev/null 2>&1 || true
 fi
 
-# 2. Fast Copy-on-Write (CoW) Disk (< 0.2s)
+# Fast Copy-on-Write (CoW) Disk
 DISK_IMG="${RUNTIME_DIR}/disk.qcow2"
-qemu-img create -f qcow2 -b "$BASE_IMG" -F qcow2 "$DISK_IMG" "${DISK}G" >/dev/null 2>&1
+qemu-img create -f qcow2 -b "$BASE_IMG" -F qcow2 "$DISK_IMG" "${DISK}G" >/dev/null 2>&1 || \
+qemu-img create -f qcow2 "$DISK_IMG" "${DISK}G" >/dev/null 2>&1
 
 # 3. Dynamic IP allocation on internal VM Bridge (10.244.x.y)
 SUBNET_HASH=$(echo "$NODE_NAME" | md5sum | awk '{print $1}')
@@ -114,7 +124,7 @@ if command -v "$QEMU_BIN" &>/dev/null; then
         -drive file="$DISK_IMG",if=virtio,format=qcow2 \
         -chardev socket,id=char0,path="$CONSOLE_SOCK",server=on,wait=off \
         -serial chardev:char0 \
-        -netdev user,id=net0,hostfwd=tcp::${PORTS}0-:22 \
+        -netdev user,id=net0 \
         -device virtio-net-pci,netdev=net0 \
         -display none \
         -daemonize \

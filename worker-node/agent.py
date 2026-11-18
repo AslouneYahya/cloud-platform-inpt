@@ -265,6 +265,7 @@ def provision_vm(req: VmProvisionReq, _: None = Header(None)):
         args += ["--pass", req.initial_password]
 
     proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=60)
+    logger.info("Script returncode=%d, stdout: '%s', stderr: '%s'", proc.returncode, proc.stdout.strip(), proc.stderr.strip())
     data = {}
     for line in proc.stdout.strip().splitlines():
         if "=" in line:
@@ -272,7 +273,7 @@ def provision_vm(req: VmProvisionReq, _: None = Header(None)):
             data[k.strip().lower()] = v.strip()
 
     if proc.returncode != 0:
-        err = data.get("error") or proc.stderr or "Provisioning failed"
+        err = data.get("error") or proc.stderr.strip() or f"Script exited with code {proc.returncode}"
         raise HTTPException(status_code=500, detail=err)
 
     return {
