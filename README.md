@@ -93,6 +93,17 @@ Maintien en conditions opérationnelles des services d'orchestration via les dé
 
 ---
 
+### 12. Cluster Multi-Nœuds & Virtualisation Matérielle KVM sur Worker Dédié (Sprint 4)
+Orchestration distribuée multi-nœuds avec séparation stricte entre le Master Node (contrôle, ordonnanceur *Least-Loaded*, API Edge) et le Worker Node (hyperviseur KVM matériel). Contournement de l'isolation Wi-Fi universitaire (*AP Client Isolation*) via un patron architectural d'**Outbound Tunnel Task Queue (Long-Polling)**.
+
+| Dashboard Central & Télémétrie Instance Active | Preuve d'Exécution Matérielle KVM (`-enable-kvm`) sur Worker |
+| :---: | :---: |
+| ![Instance Active sur Worker](screenshots/sprint4/Capture%20d'%C3%A9cran%202026-11-18%20232131.png) | ![Exécution KVM sur Raspberry Pi Worker](screenshots/sprint4/WhatsApp%20Image%202026-11-18%20at%2023.28.48.jpeg) |
+
+👉 **[Consulter le rapport complet et la galerie de preuves du Sprint 4 (8 captures décortiquées)](SPRINT4_README.md)** *(également disponible dans [screenshots/sprint4/README.md](screenshots/sprint4/README.md))*
+
+---
+
 ## 🛠️ Stack Technique & Justification des Choix
 
 * **Reverse Proxy & TLS — Nginx (Alpine) :** Choisi pour son empreinte mémoire minime (<15 Mo), son débit élevé et sa fiabilité pour gérer la terminaison TLS 1.3, le forçage HTTPS, le HSTS et les en-têtes CSP stricts.
