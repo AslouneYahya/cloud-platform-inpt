@@ -11,6 +11,14 @@ echo "=== [1/5] Detecting Architecture ==="
 ARCH=$(uname -m)
 echo "System architecture detected: $ARCH"
 
+# If both are already installed, ensure active and skip re-download
+if command -v warp-cli &>/dev/null && [ -f /usr/local/bin/cloudflared ]; then
+    echo "Cloudflare WARP and Tunnel are already installed! Ensuring services are active..."
+    sudo systemctl enable --now warp-svc 2>/dev/null || true
+    sudo systemctl enable --now cloudflared 2>/dev/null || true
+    exit 0
+fi
+
 # Stop existing services cleanly
 sudo systemctl stop cloudflared 2>/dev/null || true
 sudo systemctl stop warp-svc 2>/dev/null || true

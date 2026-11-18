@@ -69,11 +69,18 @@ sudo mkdir -p /var/lib/inpt-cloud/images
 sudo chown -R "$USER:$USER" /var/lib/inpt-cloud 2>/dev/null || true
 
 # ── 4. Set up Cloudflare WARP-CLI & Cloudflare Tunnel ──────────────────────────
-echo "=== [4/6] Setting up Cloudflare WARP-CLI & Public Tunnel ==="
-chmod +x "$TARGET_DIR/setup_cloudflare_tunnel.sh" 2>/dev/null || true
-sudo "$TARGET_DIR/setup_cloudflare_tunnel.sh" 2>/dev/null || {
-    echo "⚠️ Cloudflare tunnel setup completed with warnings (service active)"
-}
+echo "=== [4/6] Checking Cloudflare WARP & Public Tunnel ==="
+if command -v cloudflared &>/dev/null && command -v warp-cli &>/dev/null; then
+    echo "✅ Cloudflare Tunnel and WARP are already installed on this Master Pi!"
+    sudo systemctl start warp-svc 2>/dev/null || true
+    sudo systemctl start cloudflared 2>/dev/null || true
+else
+    echo "First-time setup: installing Cloudflare WARP and Tunnel..."
+    chmod +x "$TARGET_DIR/setup_cloudflare_tunnel.sh" 2>/dev/null || true
+    sudo "$TARGET_DIR/setup_cloudflare_tunnel.sh" 2>/dev/null || {
+        echo "⚠️ Cloudflare tunnel setup completed with warnings (service active)"
+    }
+fi
 
 # ── 5. Set up Master Node Daemon & Systemd Service ────────────────────────────
 echo "=== [5/6] Configuring Master Node Daemon Service ==="
