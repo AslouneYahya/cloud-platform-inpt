@@ -17,19 +17,27 @@ echo "======================================================================"
 # ── 1. Clone / Pull Latest Repository ─────────────────────────────────────────
 echo "=== [1/6] Updating Cloud Platform Repository ==="
 if [ -d "$TARGET_DIR" ]; then
-    echo "Repository already present, pulling latest version..."
+    echo "Repository already present, syncing cleanly with origin/main..."
     cd "$TARGET_DIR"
-    git pull origin main || true
+    git fetch origin main || true
+    git reset --hard origin/main || true
 else
     echo "Cloning repository from GitHub..."
     git clone "$REPO_URL" "$TARGET_DIR"
     cd "$TARGET_DIR"
 fi
 
-# ── 2. Install KVM, QEMU & Virtualization Packages ───────────────────────────
+# ── 2. Fix Debian 11 Bullseye EOL Mirrors if needed ──────────────────────────
+RELEASE=$(lsb_release -cs 2>/dev/null || grep VERSION_CODENAME /etc/os-release | cut -d= -f2 || echo "bullseye")
+if [ "$RELEASE" = "bullseye" ]; then
+    echo "Fixing Debian 11 Bullseye EOL archive repositories..."
+    sudo sed -i 's|security.debian.org/debian-security|archive.debian.org/debian-security|g' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true
+    echo 'Acquire::Check-Valid-Until "false";' | sudo tee /etc/apt/apt.conf.d/99no-check-valid-until > /dev/null
+fi
+
 echo "=== [2/6] Installing KVM, QEMU & Virtualization Packages ==="
-sudo apt-get update -y
-sudo apt-get install -y \
+sudo apt-get update -o Acquire::Check-Valid-Until=false -y || true
+sudo apt-get install --fix-missing -y \
     qemu-system-arm \
     qemu-utils \
     cloud-image-utils \
@@ -39,7 +47,7 @@ sudo apt-get install -y \
     python3-venv \
     curl \
     git \
-    socat
+    socat || true
 
 if [ -c /dev/kvm ]; then
     echo "✅ Hardware KVM (/dev/kvm) detected on this Raspberry Pi!"
