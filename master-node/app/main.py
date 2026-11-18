@@ -89,7 +89,8 @@ def get_dashboard():
 
     try:
         vms = dashboard.get_deployed_vms()
-        html_content = dashboard.render_dashboard_html(health_data, vms)
+        cluster_nodes = nodes.node_registry.get_all(health_data)
+        html_content = dashboard.render_dashboard_html(health_data, vms, cluster_nodes)
         return HTMLResponse(content=html_content)
     except Exception as e:
         logger.exception("Failed to render dashboard")

@@ -22,6 +22,11 @@ ssl_ctx = ssl.create_default_context()
 ssl_ctx.check_hostname = False
 ssl_ctx.verify_mode = ssl.CERT_NONE
 
+# Install default opener with custom User-Agent to satisfy Cloudflare WAF
+opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ssl_ctx))
+opener.addheaders = [("User-Agent", "inpt-agent/1.0")]
+urllib.request.install_opener(opener)
+
 from fastapi import FastAPI, Header, HTTPException, status
 from pydantic import BaseModel, Field
 import uvicorn
@@ -121,7 +126,8 @@ def call_master(path: str, payload: dict) -> bool:
     url = f"{config.MASTER_URL}{path}"
     headers = {
         "Content-Type": "application/json",
-        "X-Cluster-Token": config.CLUSTER_TOKEN
+        "X-Cluster-Token": config.CLUSTER_TOKEN,
+        "User-Agent": "inpt-agent/1.0"
     }
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")

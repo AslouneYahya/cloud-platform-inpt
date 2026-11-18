@@ -4,7 +4,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 VMS_BASE_DIR = Path("/var/lib/inpt-cloud/vms")
 
@@ -131,7 +131,7 @@ def get_deployed_vms() -> List[Dict[str, Any]]:
     vms.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
     return vms
 
-def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> str:
+def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], cluster_nodes: Optional[List[Dict[str, Any]]] = None) -> str:
     """Render a standalone, high-performance web dashboard for the Master Node."""
     node_name = str(health.get("node_name", "raspberrypi"))
     node_model = str(health.get("node_model", "Raspberry Pi 4 Model B"))
@@ -159,6 +159,79 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> 
 
     # Temperature color
     temp_color_class = "text-emerald-400" if cpu_temp < 60 else ("text-amber-400" if cpu_temp < 75 else "text-rose-400")
+
+    # Generate Cluster Nodes HTML cards
+    nodes_list = cluster_nodes or []
+    nodes_html = ""
+    if not nodes_list:
+        nodes_html = """
+        <div class="col-span-full bg-slate-900 border border-slate-800 rounded-xl p-6 text-center text-slate-400">
+            <span class="text-2xl">🍓</span>
+            <div class="text-sm font-semibold text-slate-300 mt-2">Nœud Master isolé — En attente de jonction des Workers</div>
+            <div class="text-xs text-slate-500 mt-1">Exécutez ./setup_worker_node.sh sur vos Raspberry Pi secondaires pour les intégrer au cluster.</div>
+        </div>
+        """
+    else:
+        for node in nodes_list:
+            is_master = node.get("role") == "MASTER"
+            is_online = node.get("status") == "ONLINE"
+            role_badge = "bg-amber-500/10 text-amber-400 border-amber-500/30" if is_master else "bg-sky-500/10 text-sky-400 border-sky-500/30"
+            status_dot = "bg-emerald-400 animate-pulse" if is_online else "bg-rose-400"
+            status_text = "ONLINE" if is_online else "OFFLINE"
+            status_color = "text-emerald-400" if is_online else "text-rose-400"
+            node_temp = safe_float(node.get("cpu_temp", 45.0), 45.0)
+            node_temp_color = "text-emerald-400" if node_temp < 60 else ("text-amber-400" if node_temp < 75 else "text-rose-400")
+            n_ram_used = safe_int(node.get("ram_used_mb", 0))
+            n_ram_total = max(1, safe_int(node.get("ram_total_mb", 3892)))
+            n_ram_pct = safe_int(node.get("ram_usage_pct", int((n_ram_used / n_ram_total) * 100)))
+            n_active_vms = safe_int(node.get("active_vms", 0))
+            n_lan_ip = node.get("lan_ip", "127.0.0.1")
+            n_model = node.get("node_model", "Raspberry Pi 4 Model B")
+            n_id = node.get("node_id", "node")
+
+            nodes_html += f"""
+            <div class="bg-slate-900 border {'border-amber-500/40 shadow-amber-500/5' if is_master else 'border-slate-800'} rounded-2xl p-5 shadow-lg relative overflow-hidden">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xl">{'👑' if is_master else '🍓'}</span>
+                        <div>
+                            <div class="font-bold text-white text-sm font-mono">{n_id}</div>
+                            <div class="text-xs text-slate-400">{n_model}</div>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold border {role_badge}">
+                        {node.get('role', 'WORKER')}
+                    </span>
+                </div>
+
+                <div class="flex items-center justify-between bg-slate-950/60 rounded-lg px-3 py-2 text-xs mb-3 font-mono">
+                    <span class="text-slate-400">LAN IP : <strong class="text-sky-400">{n_lan_ip}</strong></span>
+                    <span class="flex items-center space-x-1.5 {status_color} font-semibold">
+                        <span class="w-2 h-2 rounded-full {status_dot}"></span>
+                        <span>{status_text}</span>
+                    </span>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 text-center text-xs mb-3">
+                    <div class="bg-slate-800/60 rounded-lg p-2 border border-slate-700/50">
+                        <div class="text-slate-400 text-[10px] uppercase">Temp</div>
+                        <div class="font-bold font-mono {node_temp_color}">{node_temp}°C</div>
+                    </div>
+                    <div class="bg-slate-800/60 rounded-lg p-2 border border-slate-700/50">
+                        <div class="text-slate-400 text-[10px] uppercase">RAM ({n_ram_pct}%)</div>
+                        <div class="font-bold font-mono text-indigo-400">{n_ram_used}M</div>
+                    </div>
+                    <div class="bg-slate-800/60 rounded-lg p-2 border border-slate-700/50">
+                        <div class="text-slate-400 text-[10px] uppercase">VMs KVM</div>
+                        <div class="font-bold font-mono text-emerald-400">{n_active_vms}</div>
+                    </div>
+                </div>
+
+                <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                    <div class="bg-indigo-500 h-1.5 rounded-full" style="width: {n_ram_pct}%"></div>
+                </div>
+            </div>
+            """
 
     # Generate VM table rows
     rows_html = ""
@@ -349,6 +422,23 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> 
 
     <!-- Main Content -->
     <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <!-- Cluster Topology: Physical Multi-Node Bar -->
+        <section>
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center space-x-2">
+                    <span class="text-xl">🍓</span>
+                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-300">Topologie du Cluster Multi-Nœuds (Raspberry Pi 4 ARM64)</h2>
+                </div>
+                <div class="text-xs text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1 rounded-lg">
+                    <span>Nœuds enregistrés : </span>
+                    <strong class="text-emerald-400 font-mono">{len(nodes_list)}</strong>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {nodes_html}
+            </div>
+        </section>
+
         <!-- Cluster Node Telemetry Cards -->
         <section>
             <div class="flex items-center justify-between mb-4">
@@ -464,7 +554,7 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]]) -> 
     <!-- Footer -->
     <footer class="bg-slate-900 border-t border-slate-800 py-6 text-center text-xs text-slate-500">
         <p>Projet d'Innovation — Institut National des Postes et Télécommunications (INPT)</p>
-        <p class="mt-1">Plateforme IaaS & Orchestrateur Décentralisé • Supervisor : Pr. Safae DAHMANI • Étudiant : Yahya ASLOUNE</p>
+        <p class="mt-1">Plateforme IaaS & Orchestrateur Décentralisé • Encadrantes : Pr. Safae DAHMANI & Pr. Kaouthar BOUSSELAM • Étudiant : Yahya ASLOUNE</p>
     </footer>
 
     <!-- Auto-refresh Script -->
