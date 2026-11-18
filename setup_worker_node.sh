@@ -5,6 +5,7 @@
 # Zero manual commands: clones, installs, connects, and auto-registers to Master
 # ==============================================================================
 set -e
+export DEBIAN_FRONTEND=noninteractive
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_DIR="$SCRIPT_DIR"

@@ -4,6 +4,7 @@
 # INPT Cloud Platform — Sets up Master Daemon, KVM, Cloudflare Tunnel & WARP
 # ==============================================================================
 set -e
+export DEBIAN_FRONTEND=noninteractive
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_DIR="$SCRIPT_DIR"
