@@ -87,6 +87,7 @@ echo "Connecting to Cloudflare WARP network..."
 warp-cli --accept-tos connect 2>/dev/null || warp-cli connect 2>/dev/null || true
 sleep 3
 warp-cli status 2>/dev/null || true
+sudo chmod 666 /run/cloudflare-warp/warp_service 2>/dev/null || true
 
 echo "=== [4/5] Installing & Starting Cloudflare Tunnel ==="
 sudo rm -f /etc/systemd/system/cloudflared.service 2>/dev/null || true

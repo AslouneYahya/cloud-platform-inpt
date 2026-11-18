@@ -67,7 +67,7 @@ else
 fi
 
 # ── 3. Install & Connect Cloudflare WARP CLI (Zero Trust Mesh) ────────────────
-echo "=== [3/6] Setting up Cloudflare WARP-CLI on Worker ==="
+echo "=== [3/6] Installing and Enabling Cloudflare WARP Service ==="
 if [ "$RELEASE" = "bullseye" ]; then
     DEB_URL="https://pkg.cloudflareclient.com/pool/bullseye/main/c/cloudflare-warp/cloudflare-warp_2026.3.846.0_arm64.deb"
 else
@@ -77,54 +77,56 @@ fi
 # Ensure required state directories exist
 sudo mkdir -p /var/lib/cloudflare-warp /etc/cloudflare-warp /run/cloudflare-warp 2>/dev/null || true
 
-if [ ! -f /usr/bin/warp-svc ] || [ ! -f /usr/bin/warp-cli ]; then
-    echo "Configuring official Cloudflare WARP daemon binaries..."
-    if [ ! -s /tmp/cloudflare-warp.deb ]; then
-        curl -# -L -o /tmp/cloudflare-warp.deb "$DEB_URL" 2>/dev/null || true
-    fi
-    if [ -f /tmp/cloudflare-warp.deb ]; then
-        # Try native dpkg install
-        sudo dpkg -i --force-depends /tmp/cloudflare-warp.deb 2>/dev/null || true
-
-        # Extract and copy binaries to both /usr/bin and /bin
-        rm -rf /tmp/warp_extract && mkdir -p /tmp/warp_extract
-        dpkg-deb -x /tmp/cloudflare-warp.deb /tmp/warp_extract
-        sudo cp -f /tmp/warp_extract/usr/bin/warp-svc /usr/bin/warp-svc 2>/dev/null || sudo cp -f /tmp/warp_extract/bin/warp-svc /usr/bin/warp-svc 2>/dev/null || true
-        sudo cp -f /tmp/warp_extract/usr/bin/warp-cli /usr/bin/warp-cli 2>/dev/null || sudo cp -f /tmp/warp_extract/bin/warp-cli /usr/bin/warp-cli 2>/dev/null || true
-        sudo cp -f /usr/bin/warp-svc /bin/warp-svc 2>/dev/null || true
-        sudo cp -f /usr/bin/warp-cli /bin/warp-cli 2>/dev/null || true
-        sudo chmod +x /usr/bin/warp-svc /usr/bin/warp-cli /bin/warp-svc /bin/warp-cli 2>/dev/null || true
-        sudo cp -f /tmp/warp_extract/lib/systemd/system/warp-svc.service /etc/systemd/system/warp-svc.service 2>/dev/null || true
-    fi
+# 1. Download official deb package if not cached
+if [ ! -s /tmp/cloudflare-warp.deb ] || [ $(stat -c%s /tmp/cloudflare-warp.deb 2>/dev/null || echo 0) -lt 10000000 ]; then
+    echo "Downloading official Cloudflare WARP package..."
+    curl -# -L -o /tmp/cloudflare-warp.deb "$DEB_URL" 2>/dev/null || true
 fi
 
-# Start and wait for daemon to initialize
-echo "Starting Cloudflare WARP daemon (warp-svc)..."
-sudo systemctl daemon-reload 2>/dev/null || true
-sudo systemctl enable --now warp-svc 2>/dev/null || true
-sudo systemctl restart warp-svc 2>/dev/null || true
-
-# Wait up to 10s for socket initialization
-echo "Waiting for Cloudflare WARP daemon socket..."
-for i in {1..10}; do
-    if systemctl is-active --quiet warp-svc; then
-        sleep 2
-        break
-    fi
-    sleep 1
-done
-
-if command -v warp-cli &>/dev/null; then
-    echo "Connecting to Cloudflare Network via WARP..."
-    yes | warp-cli --accept-tos registration new 2>/dev/null || \
-    yes | warp-cli --accept-tos register 2>/dev/null || \
-    warp-cli register 2>/dev/null || true
-
-    warp-cli --accept-tos mode warp 2>/dev/null || warp-cli set-mode warp 2>/dev/null || true
-    warp-cli --accept-tos connect 2>/dev/null || warp-cli connect 2>/dev/null || true
-    sleep 3
-    warp-cli status 2>/dev/null || true
+# 2. Install package natively with dpkg
+if [ -f /tmp/cloudflare-warp.deb ]; then
+    echo "Installing Cloudflare WARP package..."
+    sudo dpkg -i /tmp/cloudflare-warp.deb 2>/dev/null || sudo apt-get install --fix-broken -y 2>/dev/null || true
 fi
+
+# 3. Fallback copy to ensure binaries and service are present
+if [ ! -f /usr/bin/warp-svc ] && [ ! -f /bin/warp-svc ]; then
+    rm -rf /tmp/warp_extract && mkdir -p /tmp/warp_extract
+    dpkg-deb -x /tmp/cloudflare-warp.deb /tmp/warp_extract
+    sudo cp -f /tmp/warp_extract/usr/bin/* /usr/bin/ 2>/dev/null || true
+    sudo cp -f /tmp/warp_extract/bin/* /bin/ 2>/dev/null || true
+    sudo cp -f /tmp/warp_extract/lib/systemd/system/warp-svc.service /etc/systemd/system/warp-svc.service 2>/dev/null || true
+    sudo chmod +x /usr/bin/warp-svc /usr/bin/warp-cli /bin/warp-svc /bin/warp-cli 2>/dev/null || true
+fi
+
+# Ensure binaries exist in /usr/bin where systemd service expects it
+if [ -f /bin/warp-svc ] && [ ! -f /usr/bin/warp-svc ]; then
+    sudo cp -f /bin/warp-svc /usr/bin/warp-svc
+fi
+if [ -f /bin/warp-cli ] && [ ! -f /usr/bin/warp-cli ]; then
+    sudo cp -f /bin/warp-cli /usr/bin/warp-cli
+fi
+
+# 4. Enable and start systemd service
+echo "Starting Cloudflare WARP service (warp-svc)..."
+sudo systemctl daemon-reload
+sudo systemctl enable warp-svc
+sudo systemctl restart warp-svc
+sleep 4
+
+# 5. Connect WARP
+echo "Connecting to Cloudflare Network via WARP..."
+sudo warp-cli --accept-tos registration new 2>/dev/null || \
+sudo warp-cli --accept-tos register 2>/dev/null || \
+sudo warp-cli register 2>/dev/null || true
+
+sudo warp-cli --accept-tos mode warp 2>/dev/null || sudo warp-cli set-mode warp 2>/dev/null || true
+sudo warp-cli --accept-tos connect 2>/dev/null || sudo warp-cli connect 2>/dev/null || true
+sleep 3
+sudo warp-cli status 2>/dev/null || true
+
+# Allow non-root users to query warp-cli
+sudo chmod 666 /run/cloudflare-warp/warp_service 2>/dev/null || true
 
 # ── 4. Set up Storage Pools & Permissions ─────────────────────────────────────
 echo "=== [4/6] Initializing Local Storage Pools ==="
