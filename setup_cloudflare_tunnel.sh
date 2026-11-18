@@ -50,13 +50,17 @@ sudo cp /tmp/warp_extract/bin/warp-svc /bin/warp-svc
 sudo cp /tmp/warp_extract/bin/warp-cli /bin/warp-cli
 sudo chmod +x /bin/warp-svc /bin/warp-cli
 
+# Ensure required state directories exist
+sudo mkdir -p /var/lib/cloudflare-warp /etc/cloudflare-warp /run/cloudflare-warp 2>/dev/null || true
+
 # Copy official systemd service
 sudo cp /tmp/warp_extract/lib/systemd/system/warp-svc.service /etc/systemd/system/warp-svc.service
 
 echo "Starting official Cloudflare WARP service..."
 sudo systemctl daemon-reload
 sudo systemctl enable --now warp-svc
-sleep 4
+sudo systemctl restart warp-svc
+sleep 5
 
 echo "=== [3/5] Activating & Connecting Cloudflare WARP ==="
 # Accept privacy policy automatically for both new and legacy warp-cli

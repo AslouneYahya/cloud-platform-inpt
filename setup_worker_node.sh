@@ -72,6 +72,9 @@ else
     DEB_URL="https://pkg.cloudflareclient.com/pool/bookworm/main/c/cloudflare-warp/cloudflare-warp_2026.8.2115.0_arm64.deb"
 fi
 
+# Ensure required state directories exist
+sudo mkdir -p /var/lib/cloudflare-warp /etc/cloudflare-warp /run/cloudflare-warp 2>/dev/null || true
+
 if ! command -v warp-cli &>/dev/null; then
     echo "Downloading official Cloudflare WARP package..."
     curl -# -L -o /tmp/cloudflare-warp.deb "$DEB_URL" 2>/dev/null || true
@@ -81,20 +84,36 @@ if ! command -v warp-cli &>/dev/null; then
         sudo cp /tmp/warp_extract/bin/warp-svc /bin/warp-svc
         sudo cp /tmp/warp_extract/bin/warp-cli /bin/warp-cli
         sudo chmod +x /bin/warp-svc /bin/warp-cli
-        sudo cp /tmp/warp_extract/lib/systemd/system/warp-svc.service /etc/systemd/system/warp-svc.service
-        sudo systemctl daemon-reload
-        sudo systemctl enable --now warp-svc
-        sleep 3
+        sudo cp /tmp/warp_extract/lib/systemd/system/warp-svc.service /etc/systemd/system/warp-svc.service 2>/dev/null || true
     fi
 fi
 
+# Start and wait for daemon to initialize
+echo "Starting Cloudflare WARP daemon (warp-svc)..."
+sudo systemctl daemon-reload 2>/dev/null || true
+sudo systemctl enable --now warp-svc 2>/dev/null || true
+sudo systemctl restart warp-svc 2>/dev/null || true
+
+# Wait up to 8s for socket initialization
+echo "Waiting for Cloudflare WARP daemon socket..."
+for i in {1..8}; do
+    if systemctl is-active --quiet warp-svc; then
+        sleep 2
+        break
+    fi
+    sleep 1
+done
+
 if command -v warp-cli &>/dev/null; then
     echo "Connecting to Cloudflare Network via WARP..."
-    yes | warp-cli --accept-tos register 2>/dev/null || warp-cli --accept-tos registration new 2>/dev/null || true
-    warp-cli --accept-tos mode warp 2>/dev/null || true
-    warp-cli --accept-tos connect 2>/dev/null || true
+    yes | warp-cli --accept-tos register 2>/dev/null || \
+    warp-cli --accept-tos registration new 2>/dev/null || \
+    warp-cli register 2>/dev/null || true
+
+    warp-cli --accept-tos mode warp 2>/dev/null || warp-cli set-mode warp 2>/dev/null || true
+    warp-cli --accept-tos connect 2>/dev/null || warp-cli connect 2>/dev/null || true
     sleep 2
-    warp-cli status || true
+    warp-cli status 2>/dev/null || true
 fi
 
 # ── 4. Set up Storage Pools & Permissions ─────────────────────────────────────
