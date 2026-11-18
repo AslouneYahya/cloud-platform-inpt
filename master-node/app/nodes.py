@@ -3,9 +3,11 @@ import logging
 import os
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
+import threading
 from typing import Dict, List, Optional
 import urllib.request
 import urllib.error
+import uuid
 
 from app import config, schemas
 
@@ -16,6 +18,9 @@ REGISTRY_FILE = Path("/var/lib/inpt-cloud/cluster_nodes.json")
 class NodeRegistry:
     def __init__(self):
         self.nodes: Dict[str, dict] = {}
+        self.pending_tasks: Dict[str, List[dict]] = {}
+        self.task_results: Dict[str, dict] = {}
+        self.task_events: Dict[str, threading.Event] = {}
         self._load_from_disk()
 
     def _load_from_disk(self):
@@ -206,48 +211,54 @@ class NodeRegistry:
                     chosen["node_id"], chosen["role"], chosen["ram_used_mb"], chosen["ram_total_mb"])
         return chosen
 
+    def poll_tasks(self, node_id: str) -> List[dict]:
+        """Worker retrieves pending tasks waiting for execution."""
+        tasks = self.pending_tasks.pop(node_id, [])
+        if not tasks:
+            for k in list(self.pending_tasks.keys()):
+                if k.lower() == node_id.lower() or node_id.lower() in k.lower():
+                    tasks = self.pending_tasks.pop(k, [])
+                    break
+        return tasks
+
+    def complete_task(self, task_id: str, result: dict) -> bool:
+        """Worker reports task execution output back to Master."""
+        self.task_results[task_id] = result
+        evt = self.task_events.get(task_id)
+        if evt:
+            evt.set()
+            return True
+        return False
+
     def forward_request(self, node: dict, path: str, method: str = "POST", payload: Optional[dict] = None) -> dict:
         """
-        Forwards VM operations to the Worker Node Agent over the local cluster LAN.
-        Tries physical LAN IP first, then mDNS hostname fallback.
+        Dispatches VM operations to the Worker Node via resilient Task Queue over Cloudflare Tunnel.
+        Immune to university campus Wi-Fi Client Isolation (AP Isolation) and local NAT.
         """
-        lan_ip = node.get("lan_ip")
-        hostname = node.get("hostname")
-        port = node.get("agent_port", 5001)
+        node_id = node.get("node_id")
+        task_id = str(uuid.uuid4())
+        evt = threading.Event()
+        self.task_events[task_id] = evt
 
-        targets = []
-        if lan_ip and not lan_ip.startswith("172.16.") and lan_ip != "127.0.0.1":
-            targets.append(lan_ip)
-        if hostname:
-            targets.append(f"{hostname}.local")
-            targets.append(hostname)
-        if lan_ip and lan_ip not in targets:
-            targets.append(lan_ip)
-
-        headers = {
-            "Content-Type": "application/json",
-            "X-Cluster-Token": config.API_KEY,
-            "User-Agent": "inpt-master/1.0"
+        task = {
+            "task_id": task_id,
+            "path": path,
+            "method": method,
+            "payload": payload or {}
         }
-        data = json.dumps(payload).encode("utf-8") if payload else None
+        self.pending_tasks.setdefault(node_id, []).append(task)
+        logger.info("Queued task %s (%s %s) for Worker '%s'", task_id, method, path, node_id)
 
-        last_err = None
-        for host in targets:
-            url = f"http://{host}:{port}{path}"
-            logger.info("Forwarding %s to Worker '%s' at %s", method, node["node_id"], url)
-            req = urllib.request.Request(url, data=data, headers=headers, method=method)
-            try:
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    resp_body = resp.read().decode("utf-8")
-                    return json.loads(resp_body) if resp_body else {"status": "SUCCESS"}
-            except urllib.error.HTTPError as e:
-                err_text = e.read().decode("utf-8")
-                logger.error("Worker %s HTTP %d error: %s", node["node_id"], e.code, err_text)
-                raise RuntimeError(f"Worker node error ({e.code}): {err_text}")
-            except Exception as e:
-                last_err = e
-                logger.warning("Failed route to Worker %s at %s: %s (trying next target)", node["node_id"], url, e)
+        # Wait up to 30 seconds for Worker agent to poll, provision KVM, and report back
+        finished = evt.wait(timeout=30.0)
 
-        raise RuntimeError(f"Failed to communicate with worker {node['node_id']}: {last_err}")
+        self.task_events.pop(task_id, None)
+        if finished:
+            res = self.task_results.pop(task_id, {})
+            logger.info("Task %s successfully executed by Worker '%s'", task_id, node_id)
+            return res
+        else:
+            logger.warning("Worker '%s' timed out after 30s on task %s", node_id, task_id)
+            raise TimeoutError(f"Worker '{node_id}' timed out after 30s on task {task_id}")
 
 node_registry = NodeRegistry()

@@ -174,6 +174,20 @@ def node_heartbeat(req: schemas.NodeHeartbeatRequest, x_cluster_token: Optional[
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Node {req.node_id} not registered")
     return {"status": "SUCCESS", "node_id": req.node_id}
 
+@app.post("/api/nodes/{node_id}/poll")
+def poll_node_tasks(node_id: str, x_cluster_token: Optional[str] = Header(None)):
+    """Worker node agent retrieves any pending actions (provision, power, deprovision)."""
+    verify_token(x_cluster_token)
+    tasks = nodes.node_registry.poll_tasks(node_id)
+    return {"status": "SUCCESS", "tasks": tasks}
+
+@app.post("/api/nodes/tasks/{task_id}/complete")
+def complete_node_task(task_id: str, payload: dict, x_cluster_token: Optional[str] = Header(None)):
+    """Worker node reports back completion of a dispatched task."""
+    verify_token(x_cluster_token)
+    success = nodes.node_registry.complete_task(task_id, payload)
+    return {"status": "SUCCESS" if success else "NOT_FOUND"}
+
 @app.get("/api/cluster/nodes")
 def get_cluster_nodes():
     """Return all cluster nodes (Master + Workers) with live statuses and telemetry for clickable UI."""

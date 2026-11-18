@@ -218,6 +218,8 @@ async def startup_event():
     asyncio.get_event_loop().run_in_executor(None, register_to_master)
     # 3. Start background heartbeat
     asyncio.create_task(heartbeat_loop())
+    # 4. Start resilient outbound task polling loop
+    asyncio.create_task(task_worker_loop())
 
 # ── VM Provisioning & Lifecycle Endpoints ─────────────────────────────────────
 
@@ -312,6 +314,63 @@ def health():
         "disk_free_gb": disk["free_gb"],
         "active_vms": count_active_vms()
     }
+
+def process_task(task: dict) -> dict:
+    task_id = task.get("task_id")
+    path = task.get("path", "")
+    method = task.get("method", "POST")
+    payload = task.get("payload", {})
+    logger.info("Executing dispatched task %s: %s %s", task_id, method, path)
+
+    try:
+        if path == "/vms" and method == "POST":
+            req = VmProvisionReq(**payload)
+            res = provision_vm(req)
+            return res
+        elif "/action" in path and method == "POST":
+            parts = path.split("/")
+            vm_id = parts[2] if len(parts) > 2 else payload.get("vm_id", "")
+            req = VmActionReq(**payload)
+            return power_vm(vm_id, req)
+        elif method == "DELETE":
+            parts = path.split("/")
+            vm_id = parts[2] if len(parts) > 2 else payload.get("vm_id", "")
+            return destroy_vm(vm_id)
+        else:
+            return {"status": "ERROR", "message": f"Unsupported action {method} {path}"}
+    except Exception as e:
+        logger.exception("Task %s execution error: %s", task_id, e)
+        return {"status": "ERROR", "message": str(e)}
+
+async def task_worker_loop():
+    """Poll Master for scheduled tasks over Cloudflare Tunnel (resilient to campus Wi-Fi AP-Isolation)."""
+    while True:
+        try:
+            url = f"{config.MASTER_URL}/api/nodes/{config.NODE_ID}/poll"
+            headers = {
+                "Content-Type": "application/json",
+                "X-Cluster-Token": config.CLUSTER_TOKEN,
+                "User-Agent": "inpt-agent/1.0"
+            }
+            req = urllib.request.Request(url, data=b"{}", headers=headers, method="POST")
+            with urllib.request.urlopen(req, context=ssl_ctx, timeout=8) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    tasks = data.get("tasks", [])
+                    for task in tasks:
+                        task_id = task.get("task_id")
+                        result = await asyncio.get_event_loop().run_in_executor(None, process_task, task)
+                        complete_url = f"{config.MASTER_URL}/api/nodes/tasks/{task_id}/complete"
+                        comp_data = json.dumps(result).encode("utf-8")
+                        comp_req = urllib.request.Request(complete_url, data=comp_data, headers=headers, method="POST")
+                        try:
+                            with urllib.request.urlopen(comp_req, context=ssl_ctx, timeout=8) as comp_resp:
+                                logger.info("Reported task %s complete (HTTP %d)", task_id, comp_resp.status)
+                        except Exception as ce:
+                            logger.error("Failed to report task %s completion: %s", task_id, ce)
+        except Exception as e:
+            logger.debug("Task poll loop: %s", e)
+        await asyncio.sleep(1.5)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=config.AGENT_PORT)
