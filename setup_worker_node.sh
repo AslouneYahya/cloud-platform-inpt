@@ -6,7 +6,8 @@
 # ==============================================================================
 set -e
 
-TARGET_DIR="$HOME/cloud-platform-inpt"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET_DIR="$SCRIPT_DIR"
 REPO_URL="https://github.com/AslouneYahya/cloud-platform-inpt.git"
 MASTER_URL="https://master.aslouneyahya.com"
 
@@ -14,28 +15,34 @@ echo "======================================================================"
 echo "   🍓 [INPT Cloud Platform] Worker Node Complete Automated Setup      "
 echo "======================================================================"
 
-# ── 1. Clone / Pull Latest Repository ─────────────────────────────────────────
+# ── 1. Clean Sync with GitHub Repository ──────────────────────────────────────
 echo "=== [1/6] Updating Cloud Platform Repository ==="
-if [ -d "$TARGET_DIR" ]; then
-    echo "Repository already present, syncing cleanly with origin/main..."
+if [ -d "$TARGET_DIR/.git" ]; then
+    echo "Repository detected at $TARGET_DIR, syncing cleanly with origin/main..."
     cd "$TARGET_DIR"
-    git fetch origin main || true
-    git reset --hard origin/main || true
+    git fetch origin main 2>/dev/null || true
+    git reset --hard origin/main 2>/dev/null || true
 else
-    echo "Cloning repository from GitHub..."
+    TARGET_DIR="$HOME/cloud-platform-inpt"
+    echo "Cloning repository from GitHub to $TARGET_DIR..."
     git clone "$REPO_URL" "$TARGET_DIR"
     cd "$TARGET_DIR"
 fi
 
-# ── 2. Fix Debian 11 Bullseye EOL Mirrors if needed ──────────────────────────
+# ── 2. Automatic Debian 11 Bullseye EOL Archive Fix ───────────────────────────
+echo "=== [2/6] Configuring APT Repositories & Packages ==="
 RELEASE=$(lsb_release -cs 2>/dev/null || grep VERSION_CODENAME /etc/os-release | cut -d= -f2 || echo "bullseye")
+
 if [ "$RELEASE" = "bullseye" ]; then
-    echo "Fixing Debian 11 Bullseye EOL archive repositories..."
-    sudo sed -i 's|security.debian.org/debian-security|archive.debian.org/debian-security|g' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true
+    echo "Patching Debian 11 Bullseye EOL security repositories to archive.debian.org..."
+    sudo sed -i 's|security.debian.org/debian-security|archive.debian.org/debian-security|g' /etc/apt/sources.list 2>/dev/null || true
+    sudo sed -i 's|deb.debian.org/debian bullseye-updates|archive.debian.org/debian bullseye-updates|g' /etc/apt/sources.list 2>/dev/null || true
+    sudo rm -f /etc/apt/sources.list.d/cloudflare-client.list 2>/dev/null || true
     echo 'Acquire::Check-Valid-Until "false";' | sudo tee /etc/apt/apt.conf.d/99no-check-valid-until > /dev/null
+    sudo apt-get clean 2>/dev/null || true
 fi
 
-echo "=== [2/6] Installing KVM, QEMU & Virtualization Packages ==="
+echo "Installing KVM, QEMU & Virtualization Packages..."
 sudo apt-get update -o Acquire::Check-Valid-Until=false -y || true
 sudo apt-get install --fix-missing -y \
     qemu-system-arm \
@@ -51,21 +58,19 @@ sudo apt-get install --fix-missing -y \
 
 if [ -c /dev/kvm ]; then
     echo "✅ Hardware KVM (/dev/kvm) detected on this Raspberry Pi!"
-    sudo usermod -aG kvm "$USER" || true
+    sudo usermod -aG kvm "$USER" 2>/dev/null || true
 else
     echo "⚠️ /dev/kvm not found. Ensure 64-bit kernel is running (arm_64bit=1 in /boot/config.txt)"
 fi
 
 # ── 3. Install & Connect Cloudflare WARP CLI (Zero Trust Mesh) ────────────────
 echo "=== [3/6] Setting up Cloudflare WARP-CLI on Worker ==="
-RELEASE=$(lsb_release -cs 2>/dev/null || grep VERSION_CODENAME /etc/os-release | cut -d= -f2 || echo "bullseye")
 if [ "$RELEASE" = "bullseye" ]; then
     DEB_URL="https://pkg.cloudflareclient.com/pool/bullseye/main/c/cloudflare-warp/cloudflare-warp_2026.3.846.0_arm64.deb"
 else
     DEB_URL="https://pkg.cloudflareclient.com/pool/bookworm/main/c/cloudflare-warp/cloudflare-warp_2026.8.2115.0_arm64.deb"
 fi
 
-# Download & extract warp-cli if missing
 if ! command -v warp-cli &>/dev/null; then
     echo "Downloading official Cloudflare WARP package..."
     curl -# -L -o /tmp/cloudflare-warp.deb "$DEB_URL" 2>/dev/null || true
@@ -82,7 +87,6 @@ if ! command -v warp-cli &>/dev/null; then
     fi
 fi
 
-# Connect WARP
 if command -v warp-cli &>/dev/null; then
     echo "Connecting to Cloudflare Network via WARP..."
     yes | warp-cli --accept-tos register 2>/dev/null || warp-cli --accept-tos registration new 2>/dev/null || true
@@ -99,7 +103,7 @@ sudo mkdir -p /var/lib/inpt-cloud/images
 sudo mkdir -p /opt/inpt-cloud/worker-node
 
 sudo cp -r "$TARGET_DIR/worker-node"/* /opt/inpt-cloud/worker-node/
-sudo chmod +x /opt/inpt-cloud/worker-node/scripts/*.sh
+sudo chmod +x /opt/inpt-cloud/worker-node/scripts/*.sh 2>/dev/null || true
 
 # ── 5. Set up Worker Daemon Environment & Systemd Service ─────────────────────
 echo "=== [5/6] Configuring Worker Agent Service ==="
@@ -107,11 +111,10 @@ cd /opt/inpt-cloud/worker-node
 
 if [ ! -d "venv" ]; then
     sudo python3 -m venv venv
-    sudo venv/bin/pip install --upgrade pip -q
-    sudo venv/bin/pip install fastapi uvicorn pydantic psutil -q
+    sudo venv/bin/pip install --upgrade pip -q 2>/dev/null || true
+    sudo venv/bin/pip install fastapi uvicorn pydantic psutil -q 2>/dev/null || true
 fi
 
-# Install systemd service
 cat <<EOF | sudo tee /etc/systemd/system/inpt-worker.service > /dev/null
 [Unit]
 Description=INPT Cloud Platform — Worker Node Hypervisor Agent
@@ -142,7 +145,7 @@ echo "=== [6/6] Verifying Connection with Master Node ==="
 sleep 4
 
 echo "Worker Agent Status:"
-sudo systemctl status inpt-worker.service --no-pager -l
+sudo systemctl status inpt-worker.service --no-pager -l || true
 
 echo ""
 echo "======================================================================"
