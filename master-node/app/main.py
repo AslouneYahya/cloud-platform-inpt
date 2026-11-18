@@ -333,3 +333,14 @@ def exec_vm_command(vm_id: str, req: schemas.VmExecRequest, _: None = Header(Non
             exit_code=1,
             executed_at=datetime.now(timezone.utc).isoformat()
         )
+
+@app.delete("/api/nodes/{node_id}")
+@app.post("/api/nodes/{node_id}/delete")
+def delete_cluster_node(node_id: str, x_cluster_token: Optional[str] = Header(None)):
+    """Remove a node from the cluster registry permanently."""
+    if x_cluster_token and x_cluster_token != config.API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    success = nodes.node_registry.delete_node(node_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found")
+    return {"status": "SUCCESS", "message": f"Node '{node_id}' removed from cluster"}

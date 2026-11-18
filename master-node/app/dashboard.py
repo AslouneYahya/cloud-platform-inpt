@@ -190,18 +190,24 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
             n_id = node.get("node_id", "node")
 
             nodes_html += f"""
-            <div class="bg-slate-900 border {'border-amber-500/40 shadow-amber-500/5' if is_master else 'border-slate-800'} rounded-2xl p-5 shadow-lg relative overflow-hidden">
+            <div onclick="openNodeModal('{n_id}')" class="bg-slate-900 border {'border-amber-500/40 shadow-amber-500/5 hover:border-amber-400' if is_master else 'border-slate-800 hover:border-sky-500/60'} rounded-2xl p-5 shadow-lg relative overflow-hidden cursor-pointer hover:scale-[1.01] transition duration-200 group">
                 <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center space-x-2">
                         <span class="text-xl">{'👑' if is_master else '🍓'}</span>
                         <div>
-                            <div class="font-bold text-white text-sm font-mono">{n_id}</div>
+                            <div class="font-bold text-white text-sm font-mono flex items-center gap-1.5">
+                                <span>{n_id}</span>
+                                <span class="text-xs text-sky-400 opacity-0 group-hover:opacity-100 transition">🔍</span>
+                            </div>
                             <div class="text-xs text-slate-400">{n_model}</div>
                         </div>
                     </div>
-                    <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold border {role_badge}">
-                        {node.get('role', 'WORKER')}
-                    </span>
+                    <div class="flex items-center space-x-1.5">
+                        {"" if is_master or is_online else f'''<button onclick="event.stopPropagation(); deleteNode('{n_id}')" title="Supprimer ce nœud du cluster" class="text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 px-2 py-0.5 rounded border border-rose-500/30 transition">🗑️</button>'''}
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold border {role_badge}">
+                            {node.get('role', 'WORKER')}
+                        </span>
+                    </div>
                 </div>
 
                 <div class="flex items-center justify-between bg-slate-950/60 rounded-lg px-3 py-2 text-xs mb-3 font-mono">
@@ -557,10 +563,146 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
         <p class="mt-1">Plateforme IaaS & Orchestrateur Décentralisé • Encadrantes : Pr. Safae DAHMANI & Pr. Kaouthar BOUSSELAM • Étudiant : Yahya ASLOUNE</p>
     </footer>
 
-    <!-- Auto-refresh Script -->
+    <!-- Node Details Modal -->
+    <div id="nodeModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
+                <div class="flex items-center space-x-3">
+                    <span id="modalIcon" class="text-2xl">🍓</span>
+                    <div>
+                        <h3 id="modalTitle" class="text-base font-bold text-white font-mono">Node ID</h3>
+                        <p id="modalSubtitle" class="text-xs text-slate-400">Model & IP</p>
+                    </div>
+                </div>
+                <button onclick="closeNodeModal()" class="text-slate-400 hover:text-white text-xl p-1 rounded-lg hover:bg-slate-800 transition">✕</button>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <div class="bg-slate-800/70 border border-slate-700/60 p-3 rounded-xl text-center">
+                    <div class="text-[10px] uppercase font-semibold text-slate-400">🌡️ Température</div>
+                    <div id="modalTemp" class="text-lg font-bold font-mono text-emerald-400 mt-0.5">-- °C</div>
+                    <div class="text-[10px] text-slate-500">BCM2711</div>
+                </div>
+                <div class="bg-slate-800/70 border border-slate-700/60 p-3 rounded-xl text-center">
+                    <div class="text-[10px] uppercase font-semibold text-slate-400">⚡ CPU Cores</div>
+                    <div id="modalCpu" class="text-lg font-bold font-mono text-sky-400 mt-0.5">4 Cores</div>
+                    <div id="modalLoad" class="text-[10px] text-slate-500">Load: 0.10</div>
+                </div>
+                <div class="bg-slate-800/70 border border-slate-700/60 p-3 rounded-xl text-center">
+                    <div class="text-[10px] uppercase font-semibold text-slate-400">💾 Mémoire RAM</div>
+                    <div id="modalRam" class="text-lg font-bold font-mono text-indigo-400 mt-0.5">-- Mo</div>
+                    <div id="modalRamPct" class="text-[10px] text-slate-500">--% alloué</div>
+                </div>
+                <div class="bg-slate-800/70 border border-slate-700/60 p-3 rounded-xl text-center">
+                    <div class="text-[10px] uppercase font-semibold text-slate-400">📦 VMs KVM</div>
+                    <div id="modalVms" class="text-lg font-bold font-mono text-emerald-400 mt-0.5">0</div>
+                    <div class="text-[10px] text-slate-500">Isolées</div>
+                </div>
+            </div>
+
+            <div class="space-y-2 bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-xs mb-4 font-mono">
+                <div class="flex justify-between"><span class="text-slate-400">LAN IP :</span><span id="modalLanIp" class="text-sky-400 font-bold">192.168.1.x</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Statut Réseau :</span><span id="modalStatus" class="font-bold">ONLINE</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Espace Libre Stockage :</span><span id="modalDisk" class="text-slate-200">-- Go</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Dernier Heartbeat :</span><span id="modalHeartbeat" class="text-slate-400">--</span></div>
+            </div>
+
+            <div class="mb-4">
+                <label class="text-[11px] uppercase font-semibold text-slate-400 mb-1 block">Accès SSH au Nœud</label>
+                <div class="flex items-center space-x-2 bg-slate-950 border border-slate-800 rounded-lg p-2 font-mono text-xs text-slate-300">
+                    <span id="modalSsh" class="flex-1 select-all">ssh pi-worker-1@ip</span>
+                    <button onclick="copyModalSsh()" class="text-xs bg-slate-800 hover:bg-slate-700 text-sky-400 px-2 py-1 rounded transition">Copier</button>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center pt-3 border-t border-slate-800">
+                <button id="modalDeleteBtn" onclick="deleteCurrentModalNode()" class="text-xs text-rose-400 hover:text-white hover:bg-rose-600/80 border border-rose-500/30 px-3 py-1.5 rounded-lg transition hidden">
+                    🗑️ Retirer ce nœud du cluster
+                </button>
+                <button onclick="closeNodeModal()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-1.5 rounded-lg ml-auto transition">
+                    Fermer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cluster Script -->
     <script>
-        setTimeout(() => {{
-            location.reload();
+        const CLUSTER_NODES_DATA = {json.dumps(nodes_list)};
+        let currentModalNodeId = null;
+
+        function openNodeModal(nodeId) {{
+            const node = CLUSTER_NODES_DATA.find(n => n.node_id === nodeId);
+            if (!node) return;
+            currentModalNodeId = nodeId;
+
+            document.getElementById('modalTitle').textContent = node.node_id;
+            document.getElementById('modalSubtitle').textContent = `${{node.role}} • ${{node.node_model || 'Raspberry Pi 4'}}`;
+            document.getElementById('modalIcon').textContent = node.role === 'MASTER' ? '👑' : '🍓';
+            document.getElementById('modalTemp').textContent = `${{node.cpu_temp || '--'}} °C`;
+            document.getElementById('modalTemp').className = `text-lg font-bold font-mono mt-0.5 ${{(node.cpu_temp || 45) > 65 ? 'text-rose-400' : 'text-emerald-400'}}`;
+            document.getElementById('modalCpu').textContent = `${{node.cpu_cores || 4}} vCPUs`;
+            document.getElementById('modalLoad').textContent = `Charge: ${{node.load_1m || '0.10'}}`;
+            document.getElementById('modalRam').textContent = `${{node.ram_used_mb || 0}} / ${{node.ram_total_mb || 3892}} Mo`;
+            document.getElementById('modalRamPct').textContent = `${{node.ram_usage_pct || 0}}% alloué`;
+            document.getElementById('modalVms').textContent = node.active_vms || 0;
+            document.getElementById('modalLanIp').textContent = node.lan_ip || '127.0.0.1';
+            
+            const isOnline = node.status === 'ONLINE';
+            const statusEl = document.getElementById('modalStatus');
+            statusEl.textContent = isOnline ? 'ONLINE' : 'OFFLINE';
+            statusEl.className = isOnline ? 'font-bold text-emerald-400' : 'font-bold text-rose-400';
+            
+            document.getElementById('modalDisk').textContent = `${{node.disk_free_gb || '--'}} Go / ${{node.disk_total_gb || '--'}} Go`;
+            document.getElementById('modalHeartbeat').textContent = node.last_heartbeat || 'Actif';
+            document.getElementById('modalSsh').textContent = `ssh pi-${{node.role.toLowerCase()}}@${{node.lan_ip}}`;
+
+            const deleteBtn = document.getElementById('modalDeleteBtn');
+            if (node.role !== 'MASTER' && !isOnline) {{
+                deleteBtn.classList.remove('hidden');
+            }} else {{
+                deleteBtn.classList.add('hidden');
+            }}
+
+            document.getElementById('nodeModal').classList.remove('hidden');
+        }}
+
+        function closeNodeModal() {{
+            document.getElementById('nodeModal').classList.add('hidden');
+            currentModalNodeId = null;
+        }}
+
+        function copyModalSsh() {{
+            const text = document.getElementById('modalSsh').textContent;
+            navigator.clipboard.writeText(text);
+        }}
+
+        async function deleteNode(nodeId) {{
+            if (!confirm(`Confirmer la suppression du nœud '${{nodeId}}' du cluster ?`)) return;
+            try {{
+                const res = await fetch(`/api/nodes/${{nodeId}}/delete`, {{ method: 'POST' }});
+                if (res.ok) {{
+                    location.reload();
+                }} else {{
+                    const err = await res.json();
+                    alert('Erreur: ' + (err.detail || 'Impossible de supprimer le nœud'));
+                }}
+            }} catch (e) {{
+                alert('Erreur réseau: ' + e);
+            }}
+        }}
+
+        function deleteCurrentModalNode() {{
+            if (currentModalNodeId) {{
+                deleteNode(currentModalNodeId);
+            }}
+        }}
+
+        // Auto-refresh every 8s unless modal is open
+        setInterval(() => {{
+            if (!currentModalNodeId) {{
+                location.reload();
+            }}
         }}, 8000);
     </script>
 </body>

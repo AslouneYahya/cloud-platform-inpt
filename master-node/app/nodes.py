@@ -22,13 +22,30 @@ class NodeRegistry:
         if REGISTRY_FILE.exists():
             try:
                 data = json.loads(REGISTRY_FILE.read_text(encoding="utf-8"))
+                pruned = False
                 for node_id, node_data in data.items():
+                    if "test" in str(node_id).lower() or "test" in str(node_data.get("hostname", "")).lower():
+                        pruned = True
+                        continue
                     # Keep persistent config, but mark status until heartbeat
                     node_data["status"] = "OFFLINE"
                     self.nodes[node_id] = node_data
+                if pruned:
+                    self._save_to_disk()
                 logger.info("Loaded %d cluster nodes from %s", len(self.nodes), REGISTRY_FILE)
             except Exception as e:
                 logger.warning("Failed to load node registry from %s: %s", REGISTRY_FILE, e)
+
+    def delete_node(self, node_id: str) -> bool:
+        """Remove a node from the cluster registry permanently."""
+        to_del = [k for k in self.nodes if k == node_id or k.lower() == node_id.lower()]
+        if to_del:
+            for k in to_del:
+                del self.nodes[k]
+            self._save_to_disk()
+            logger.info("Node '%s' permanently removed from registry", node_id)
+            return True
+        return False
 
     def _save_to_disk(self):
         try:
@@ -120,7 +137,13 @@ class NodeRegistry:
             result.append(master_entry)
 
         # 2. Add Worker Nodes (evaluating if any is timed out / OFFLINE)
-        for node_id, node in self.nodes.items():
+        pruned = False
+        for node_id, node in list(self.nodes.items()):
+            if "test" in str(node_id).lower() or "test" in str(node.get("hostname", "")).lower():
+                self.nodes.pop(node_id, None)
+                pruned = True
+                continue
+
             last_hb_str = node.get("last_heartbeat")
             is_online = False
             if last_hb_str:
@@ -133,6 +156,9 @@ class NodeRegistry:
 
             node["status"] = "ONLINE" if is_online else "OFFLINE"
             result.append(node)
+
+        if pruned:
+            self._save_to_disk()
 
         return result
 
