@@ -28,42 +28,35 @@ Sur le réseau Wi-Fi de l'INPT (`inpt.ac.ma`), les points d'accès activent la s
 ```mermaid
 sequenceDiagram
     autonumber
-    box rgb(30, 41, 59) Plan de Contrôle (Cloud & Master)
-    participant UI as Dashboard Central (React / Spring Boot)
-    participant Master as Master Node (FastAPI / Raspberry Pi 4)
-    end
-    box rgb(15, 23, 42) Réseau Public Sécurisé
-    participant CF as Cloudflare Zero Trust (Tunnel)
-    end
-    box rgb(30, 41, 59) Plan d'Exécution (Hyperviseur)
-    participant Worker as Worker Agent (Raspberry Pi 4)
+    actor Admin as Administrateur
+    participant UI as Dashboard Central (React)
+    participant CF as Cloudflare Zero Trust
+    participant Master as Master Node (FastAPI / Pi 4)
+    participant Worker as Worker Agent (Pi 4)
     participant KVM as QEMU / KVM (/dev/kvm)
-    end
 
-    Note over Worker,Master: 1. Contournement AP Isolation (Outbound Long-Polling)
+    Note over Worker,Master: Phase 1 — Long-Polling Sortant (Contournement AP Isolation)
     loop Toutes les 1.5s
-        Worker->>CF: POST https://master.aslouneyahya.com/api/nodes/worker-raspberrypi/poll
-        CF->>Master: Proxy requête vers localhost:5000
-        Master-->>Worker: 200 OK (Aucune tâche en attente ou Tâche disponible)
+        Worker->>CF: POST /api/nodes/worker-raspberrypi/poll
+        CF->>Master: Relais requete vers localhost:5000
+        Master-->>Worker: 200 OK (Aucune tache en attente)
     end
 
-    Note over UI,Master: 2. Déclenchement d'un Déploiement
-    UI->>CF: POST https://master.aslouneyahya.com/api/vms (Target: worker-raspberrypi)
+    Note over Admin,Master: Phase 2 — Declenchement du Deploiement
+    Admin->>UI: Creer instance test-demo (Alpine, 512Mo, KVM)
+    UI->>CF: POST /api/vms (Target: worker-raspberrypi)
     CF->>Master: Ordre de provisioning
-    Master->>Master: Enregistrement dans la file de tâches (Task Queue: PENDING)
+    Master->>Master: Enregistrement file de taches (PENDING)
 
-    Note over Worker,Master: 3. Récupération & Exécution de la Tâche
+    Note over Worker,KVM: Phase 3 — Prise en charge & Demarrage KVM
     Worker->>CF: POST /api/nodes/worker-raspberrypi/poll
-    CF->>Master: Récupération tâche
-    Master-->>Worker: 200 OK {task_id, action: "provision", vm_id, os, cpu, ram}
-    
-    Worker->>KVM: provision_kvm.sh (Vérification KVM, QCOW2, cloud-init, bridge)
-    Note over KVM: Démarrage qemu-system-aarch64 -enable-kvm -cpu host
+    CF->>Master: Recuperation tache
+    Master-->>Worker: 200 OK {task_id, os, cpu, ram}
+    Worker->>KVM: provision_kvm.sh (-enable-kvm -cpu host)
     KVM-->>Worker: Instance active (IP: 10.244.10.63)
-
-    Worker->>CF: POST /api/nodes/tasks/{task_id}/complete {status: "SUCCESS", ip: "10.244.10.63"}
-    CF->>Master: Mise à jour statut & Agrégation VM
-    Master-->>UI: Statut RUNNING & IP propagée sur les Dashboards
+    Worker->>CF: POST /api/nodes/tasks/{id}/complete {SUCCESS}
+    CF->>Master: Acquittement & Agregation VM
+    Master-->>UI: Statut RUNNING & IP synchronisee
 ```
 
 ---

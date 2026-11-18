@@ -1,0 +1,24 @@
+Objet : [Projet d'Innovation] Validation du Sprint 4 et mise a jour du Backlog
+
+Professeure Dahmani,
+
+Je vous informe de la finalisation du Sprint 4 du projet INPT Cloud Platform, validant le deploiement sur cluster physique distribue multi-noeuds (Raspberry Pi 4) :
+
+- Virtualisation materielle KVM native sur architecture ARM64 (/dev/kvm, disques virtuels QCOW2).
+- Orchestration Master/Worker via file de taches asynchrone sortante (Long-Polling via Cloudflare Tunnel Zero Trust), contournant le filtrage inter-clients du Wi-Fi campus.
+- Placement dynamique des instances (Least-Loaded Scheduler) et agregation de telemetrie reelle.
+
+Les livrables et la documentation associee sont accessibles sur le depot :
+
+- Rapport detaille du Sprint 4 : https://github.com/AslouneYahya/cloud-platform-inpt/blob/main/SPRINT4_README.md
+- Product Backlog mis a jour : https://github.com/AslouneYahya/cloud-platform-inpt/blob/main/BACKLOG.md
+
+Le Sprint 5 est desormais lance avec pour objectifs l'extension multi-workers (pool elastique sans noeud fixe) et l'integration de l'authentification OAuth2 (Google et GitHub).
+
+Restant a votre disposition pour tout echange,
+
+Bien respectueusement,
+
+Yahya ASLOUNE
+Eleve-Ingenieur a l'INPT
+Projet d'Innovation — INPT Cloud Platform
