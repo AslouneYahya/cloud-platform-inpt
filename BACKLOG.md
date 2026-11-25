@@ -99,7 +99,7 @@
 ## 🚀 Sprint 5 — Décentralisation Multi-Workers (Pool Élastique) & Authentification OAuth2 (Google / GitHub)
 **Objectif :** Transformer le cluster en un système totalement décentralisé sans dépendance à un nœud worker fixe (support multi-workers à grande échelle) et moderniser l'authentification avec le support OAuth2 / OIDC (Google et GitHub).
 
-* [ ] **US5.1 : Support Multi-Workers Simultanés (Scale-Out Horizontal N > 1)**
+* [x] **US5.1 : Support Multi-Workers Simultanés (Scale-Out Horizontal N > 1)**
   * Capacité d'enrôler dynamiquement plusieurs nœuds workers simultanés (`worker-01`, `worker-02`, ..., `worker-N`) au sein du cluster.
   * Agrégation de la capacité de calcul globale (CPU/RAM cumulés) et supervision consolidée de l'ensemble de la flotte de nœuds.
 * [ ] **US5.2 : Architecture Décentralisée sans Nœud Fixe (Pool Élastique de Workers)**

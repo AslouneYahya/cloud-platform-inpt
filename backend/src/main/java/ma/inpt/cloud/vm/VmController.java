@@ -211,4 +211,14 @@ public class VmController {
                 .header("Content-Type", "application/json")
                 .body(vmService.getClusterNodesJson());
     }
+
+    /**
+     * GET /api/vms/cluster/capacity — Return consolidated compute capacity across all cluster nodes
+     */
+    @GetMapping("/cluster/capacity")
+    public ResponseEntity<String> getClusterCapacity() {
+        return ResponseEntity.ok()
+                .header("Content-Type", "application/json")
+                .body(vmService.getClusterCapacityJson());
+    }
 }

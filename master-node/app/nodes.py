@@ -15,6 +15,22 @@ logger = logging.getLogger("cluster-nodes")
 
 REGISTRY_FILE = Path("/var/lib/inpt-cloud/cluster_nodes.json")
 
+def safe_int(val, default: int = 0) -> int:
+    try:
+        if isinstance(val, str):
+            val = val.replace(",", ".").strip()
+        return int(float(val))
+    except (ValueError, TypeError):
+        return default
+
+def safe_float(val, default: float = 0.0) -> float:
+    try:
+        if isinstance(val, str):
+            val = val.replace(",", ".").strip()
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
 class NodeRegistry:
     def __init__(self):
         self.nodes: Dict[str, dict] = {}
@@ -166,7 +182,59 @@ class NodeRegistry:
         if pruned:
             self._save_to_disk()
 
+        # Sort: Master first, then workers alphabetically by node_id
+        result.sort(key=lambda n: (0 if n.get("role") == "MASTER" else 1, n.get("node_id", "")))
         return result
+
+    def get_cluster_capacity(self, master_health: Optional[dict] = None) -> dict:
+        """
+        Aggregate total computing capacity and utilization across all cluster nodes (Master + N Workers).
+        Provides unified fleet metrics for scale-out monitoring (Cores, RAM pool, Disk, Active nodes).
+        """
+        all_nodes = self.get_all(master_health)
+        total_cores = 0
+        total_ram_mb = 0
+        used_ram_mb = 0
+        total_disk_gb = 0.0
+        free_disk_gb = 0.0
+        total_vms = 0
+        online_nodes = 0
+        worker_nodes = 0
+
+        for node in all_nodes:
+            is_online = node.get("status") == "ONLINE"
+            if is_online:
+                online_nodes += 1
+            if node.get("role") == "WORKER":
+                worker_nodes += 1
+
+            total_cores += safe_int(node.get("cpu_cores", 4), 4)
+            total_ram_mb += safe_int(node.get("ram_total_mb", 0), 0)
+            used_ram_mb += safe_int(node.get("ram_used_mb", 0), 0)
+            total_disk_gb += safe_float(node.get("disk_total_gb", 0.0), 0.0)
+            free_disk_gb += safe_float(node.get("disk_free_gb", 0.0), 0.0)
+            total_vms += safe_int(node.get("active_vms", 0), 0)
+
+        free_ram_mb = max(0, total_ram_mb - used_ram_mb)
+        ram_usage_pct = int((used_ram_mb / total_ram_mb) * 100) if total_ram_mb > 0 else 0
+        used_disk_gb = max(0.0, total_disk_gb - free_disk_gb)
+        disk_usage_pct = int((used_disk_gb / total_disk_gb) * 100) if total_disk_gb > 0 else 0
+
+        return {
+            "total_nodes": len(all_nodes),
+            "online_nodes": online_nodes,
+            "worker_nodes": worker_nodes,
+            "total_cpu_cores": total_cores,
+            "total_ram_mb": total_ram_mb,
+            "used_ram_mb": used_ram_mb,
+            "free_ram_mb": free_ram_mb,
+            "ram_usage_pct": ram_usage_pct,
+            "total_disk_gb": round(total_disk_gb, 1),
+            "used_disk_gb": round(used_disk_gb, 1),
+            "free_disk_gb": round(free_disk_gb, 1),
+            "disk_usage_pct": disk_usage_pct,
+            "total_active_vms": total_vms
+        }
 
     def get_node(self, node_id: str, master_health: Optional[dict] = None) -> Optional[dict]:
         all_nodes = self.get_all(master_health)

@@ -97,3 +97,19 @@ class NodeInfo(BaseModel):
     uptime: Optional[str] = None
     last_heartbeat: str
 
+class ClusterCapacityResponse(BaseModel):
+    total_nodes: int
+    online_nodes: int
+    worker_nodes: int
+    total_cpu_cores: int
+    total_ram_mb: int
+    used_ram_mb: int
+    free_ram_mb: int
+    ram_usage_pct: int
+    total_disk_gb: float
+    used_disk_gb: float
+    free_disk_gb: float
+    disk_usage_pct: int
+    total_active_vms: int
+
+

@@ -19,6 +19,7 @@ export default function VmManager() {
 
   // Cluster Nodes State
   const [clusterNodes, setClusterNodes] = useState([]);
+  const [clusterCapacity, setClusterCapacity] = useState(null);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
 
   // Live Logs and Terminal Modals
@@ -53,20 +54,61 @@ export default function VmManager() {
     try {
       const res = await getClusterNodes();
       let nodesList = [];
+      let cap = null;
       if (res?.data?.nodes) {
         nodesList = res.data.nodes;
+        cap = res.data.capacity || null;
       } else if (typeof res?.data === 'string') {
         const parsed = JSON.parse(res.data);
         nodesList = parsed.nodes || [];
+        cap = parsed.capacity || null;
       }
       if (nodesList.length > 0) {
         setClusterNodes(nodesList);
+        if (cap) {
+          setClusterCapacity(cap);
+        } else {
+          computeLocalCapacity(nodesList);
+        }
       } else {
         setDefaultNodes();
       }
     } catch {
       setDefaultNodes();
     }
+  }
+
+  function computeLocalCapacity(nodesList) {
+    if (!nodesList || nodesList.length === 0) return;
+    const totalNodes = nodesList.length;
+    const onlineNodes = nodesList.filter(n => n.status === 'ONLINE').length;
+    const workerNodes = nodesList.filter(n => n.role === 'WORKER').length;
+    const totalCpuCores = nodesList.reduce((acc, n) => acc + (n.cpu_cores || 4), 0);
+    const totalRamMb = nodesList.reduce((acc, n) => acc + (n.ram_total_mb || 3892), 0);
+    const usedRamMb = nodesList.reduce((acc, n) => acc + (n.ram_used_mb || 0), 0);
+    const freeRamMb = Math.max(0, totalRamMb - usedRamMb);
+    const ramUsagePct = totalRamMb > 0 ? Math.round((usedRamMb / totalRamMb) * 100) : 0;
+    const totalDiskGb = nodesList.reduce((acc, n) => acc + (n.disk_total_gb || 29.0), 0);
+    const freeDiskGb = nodesList.reduce((acc, n) => acc + (n.disk_free_gb || 20.0), 0);
+    const usedDiskGb = Math.max(0, totalDiskGb - freeDiskGb);
+    const diskUsagePct = totalDiskGb > 0 ? Math.round((usedDiskGb / totalDiskGb) * 100) : 0;
+    const totalActiveVms = nodesList.reduce((acc, n) => acc + (n.active_vms || 0), 0);
+
+    setClusterCapacity({
+      total_nodes: totalNodes,
+      online_nodes: onlineNodes,
+      worker_nodes: workerNodes,
+      total_cpu_cores: totalCpuCores,
+      total_ram_mb: totalRamMb,
+      used_ram_mb: usedRamMb,
+      free_ram_mb: freeRamMb,
+      ram_usage_pct: ramUsagePct,
+      total_disk_gb: Math.round(totalDiskGb * 10) / 10,
+      used_disk_gb: Math.round(usedDiskGb * 10) / 10,
+      free_disk_gb: Math.round(freeDiskGb * 10) / 10,
+      disk_usage_pct: diskUsagePct,
+      total_active_vms: totalActiveVms
+    });
   }
 
   function setDefaultNodes() {
@@ -449,6 +491,66 @@ export default function VmManager() {
             Auto-découverte active via domain
           </span>
         </div>
+
+        {/* ── Banner: Consolidated Fleet Computing Pool (US5.1 Multi-Workers Scale-Out) ── */}
+        {clusterCapacity && (
+          <div style={{
+            background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)',
+            borderRadius: '10px',
+            padding: '1rem 1.25rem',
+            marginBottom: '1.25rem',
+            color: '#fff',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.75rem',
+            boxShadow: '0 4px 15px rgba(15, 23, 42, 0.15)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span style={{ fontSize: '1.3rem' }}>🌐</span>
+                <div>
+                  <div style={{ fontWeight: '700', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>Pool de Calcul Consolidé du Cluster</span>
+                    <span style={{ backgroundColor: 'rgba(99, 102, 241, 0.25)', border: '1px solid rgba(129, 140, 248, 0.4)', color: '#c7d2fe', fontSize: '0.65rem', padding: '0.1rem 0.45rem', borderRadius: '10px', textTransform: 'uppercase' }}>
+                      Scale-Out Multi-Workers
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                    Puissance cumulée sur {clusterCapacity.online_nodes}/{clusterCapacity.total_nodes} nœuds actifs (1 Master + {clusterCapacity.worker_nodes} Worker{clusterCapacity.worker_nodes > 1 ? 's' : ''})
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34d399', fontSize: '0.75rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '20px' }}>
+                  ● {clusterCapacity.worker_nodes} Worker{clusterCapacity.worker_nodes > 1 ? 's' : ''} en Ligne
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
+              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', padding: '0.6rem', textAlign: 'center', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <div style={{ fontSize: '0.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600' }}>vCPUs Cumulés</div>
+                <div style={{ fontSize: '1.15rem', fontWeight: '800', color: '#38bdf8', fontFamily: 'monospace' }}>{clusterCapacity.total_cpu_cores} Cores</div>
+                <div style={{ fontSize: '0.65rem', color: '#64748b' }}>ARM Cortex-A72</div>
+              </div>
+              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', padding: '0.6rem', textAlign: 'center', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <div style={{ fontSize: '0.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600' }}>RAM Totale Pool ({clusterCapacity.ram_usage_pct}%)</div>
+                <div style={{ fontSize: '1.15rem', fontWeight: '800', color: '#818cf8', fontFamily: 'monospace' }}>{(clusterCapacity.total_ram_mb / 1024).toFixed(1)} Go</div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{clusterCapacity.free_ram_mb} Mo libres</div>
+              </div>
+              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', padding: '0.6rem', textAlign: 'center', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <div style={{ fontSize: '0.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600' }}>Stockage Pool ({clusterCapacity.disk_usage_pct}%)</div>
+                <div style={{ fontSize: '1.15rem', fontWeight: '800', color: '#34d399', fontFamily: 'monospace' }}>{clusterCapacity.total_disk_gb} Go</div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{clusterCapacity.free_disk_gb} Go libres</div>
+              </div>
+              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', padding: '0.6rem', textAlign: 'center', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <div style={{ fontSize: '0.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600' }}>Instances Hébergées</div>
+                <div style={{ fontSize: '1.15rem', fontWeight: '800', color: '#f59e0b', fontFamily: 'monospace' }}>{clusterCapacity.total_active_vms} VMs</div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>sur {clusterCapacity.online_nodes} nœud(s)</div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Grid des Nœuds */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
@@ -945,11 +1047,14 @@ export default function VmManager() {
                   style={{ width: '100%', padding: '0.6rem 0.8rem', border: `1px solid ${BORDER_COLOR}`, borderRadius: '6px', backgroundColor: '#fff', boxSizing: 'border-box' }}
                 >
                   <option value="">🤖 Automatique — Least-Loaded Scheduler</option>
-                  {clusterNodes.filter(n => n.status === 'ONLINE').map(n => (
-                    <option key={n.node_id} value={n.node_id}>
-                      {n.role === 'MASTER' ? '👑' : '🍓'} {n.node_id} ({n.role} • {n.lan_ip})
-                    </option>
-                  ))}
+                  {clusterNodes.filter(n => n.status === 'ONLINE').map(n => {
+                    const freeRam = Math.max(0, (n.ram_total_mb || 3892) - (n.ram_used_mb || 0));
+                    return (
+                      <option key={n.node_id} value={n.node_id}>
+                        {n.role === 'MASTER' ? '👑' : '🍓'} {n.node_id} ({n.role} • {n.lan_ip} • {freeRam} Mo libre • {n.active_vms || 0} VM)
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 

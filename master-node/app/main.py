@@ -198,7 +198,18 @@ def get_cluster_nodes():
     except Exception:
         master_health = None
     all_nodes = nodes.node_registry.get_all(master_health)
-    return {"status": "SUCCESS", "nodes": all_nodes}
+    capacity = nodes.node_registry.get_cluster_capacity(master_health)
+    return {"status": "SUCCESS", "nodes": all_nodes, "capacity": capacity}
+
+@app.get("/api/cluster/capacity", response_model=schemas.ClusterCapacityResponse)
+def get_cluster_capacity():
+    """Return consolidated compute and memory capacity aggregated across the entire node fleet."""
+    try:
+        master_health = get_health().model_dump()
+    except Exception:
+        master_health = None
+    capacity = nodes.node_registry.get_cluster_capacity(master_health)
+    return schemas.ClusterCapacityResponse(**capacity)
 
 @app.get("/api/cluster/nodes/{node_id}")
 def get_cluster_node_detail(node_id: str):

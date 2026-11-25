@@ -63,3 +63,11 @@ export function getClusterNodes() {
   return apiClient.get('/vms/cluster/nodes');
 }
 
+/**
+ * Fetch consolidated fleet computing capacity across all cluster nodes (Master + N Workers)
+ */
+export function getClusterCapacity() {
+  return apiClient.get('/vms/cluster/capacity');
+}
+
+

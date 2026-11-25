@@ -181,6 +181,41 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
     # Temperature color
     temp_color_class = "text-emerald-400" if cpu_temp < 60 else ("text-amber-400" if cpu_temp < 75 else "text-rose-400")
 
+    # Consolidated Cluster Fleet Computing Pool calculation
+    fleet_cores = cpu_cores
+    fleet_ram_total = ram_total
+    fleet_ram_used = ram_used
+    fleet_disk_total = disk_total
+    fleet_disk_used = disk_used
+    fleet_online_count = 1 if status == "HEALTHY" else 0
+    fleet_total_count = 1
+    fleet_workers_count = 0
+
+    if cluster_nodes:
+        fleet_cores = 0
+        fleet_ram_total = 0
+        fleet_ram_used = 0
+        fleet_disk_total = 0.0
+        fleet_disk_used = 0.0
+        fleet_online_count = 0
+        fleet_total_count = len(cluster_nodes)
+        fleet_workers_count = sum(1 for n in cluster_nodes if n.get("role") == "WORKER")
+
+        for n in cluster_nodes:
+            is_n_online = n.get("status") == "ONLINE"
+            if is_n_online:
+                fleet_online_count += 1
+            fleet_cores += safe_int(n.get("cpu_cores", 4), 4)
+            fleet_ram_total += safe_int(n.get("ram_total_mb", 0), 0)
+            fleet_ram_used += safe_int(n.get("ram_used_mb", 0), 0)
+            n_dt = safe_float(n.get("disk_total_gb", 0.0), 0.0)
+            n_df = safe_float(n.get("disk_free_gb", 0.0), 0.0)
+            fleet_disk_total += n_dt
+            fleet_disk_used += max(0.0, n_dt - n_df)
+
+    fleet_ram_pct = int((fleet_ram_used / max(1, fleet_ram_total)) * 100) if fleet_ram_total > 0 else 0
+    fleet_disk_pct = int((fleet_disk_used / max(0.1, fleet_disk_total)) * 100) if fleet_disk_total > 0 else 0
+
     # Generate Cluster Nodes HTML cards
     nodes_list = cluster_nodes or []
     nodes_html = ""
@@ -454,6 +489,53 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
 
     <!-- Main Content -->
     <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <!-- Scale-Out Multi-Workers: Consolidated Cluster Computing Pool Banner -->
+        <section class="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/30 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+            <div class="flex flex-wrap items-center justify-between gap-4 mb-5">
+                <div class="flex items-center space-x-3.5">
+                    <div class="w-11 h-11 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-xl shadow-md">
+                        🌐
+                    </div>
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <h2 class="text-base font-bold text-white tracking-wide">Pool de Calcul Consolidé du Cluster</h2>
+                            <span class="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full">Multi-Workers Scale-Out</span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-0.5">Agrégation matérielle en temps réel de la flotte distribuée ({fleet_online_count}/{fleet_total_count} nœuds actifs)</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold rounded-full flex items-center gap-1.5 font-mono">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span>{fleet_workers_count} Worker(s) Enrôlés</span>
+                    </span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+                <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 text-center">
+                    <div class="text-[10px] text-slate-400 uppercase font-semibold">Cœurs vCPU Cumulés</div>
+                    <div class="text-xl font-bold font-mono text-white mt-1">{fleet_cores} Cœurs</div>
+                    <div class="text-[10px] text-sky-400 mt-1 font-mono">ARM Cortex-A72</div>
+                </div>
+                <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 text-center">
+                    <div class="text-[10px] text-slate-400 uppercase font-semibold">RAM Pool ({fleet_ram_pct}%)</div>
+                    <div class="text-xl font-bold font-mono text-indigo-400 mt-1">{fleet_ram_total} Mo</div>
+                    <div class="text-[10px] text-slate-400 mt-1">{fleet_ram_used} Mo consommés</div>
+                </div>
+                <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 text-center">
+                    <div class="text-[10px] text-slate-400 uppercase font-semibold">Stockage Flotte ({fleet_disk_pct}%)</div>
+                    <div class="text-xl font-bold font-mono text-emerald-400 mt-1">{fleet_disk_total:.1f} Go</div>
+                    <div class="text-[10px] text-slate-400 mt-1">{fleet_disk_total - fleet_disk_used:.1f} Go libres</div>
+                </div>
+                <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 text-center">
+                    <div class="text-[10px] text-slate-400 uppercase font-semibold">Flotte de Nœuds</div>
+                    <div class="text-xl font-bold font-mono text-emerald-400 mt-1">{fleet_online_count} <span class="text-sm font-normal text-slate-400">/ {fleet_total_count}</span></div>
+                    <div class="text-[10px] text-emerald-400 mt-1">1 Master + {fleet_workers_count} Worker(s)</div>
+                </div>
+            </div>
+        </section>
+
         <!-- Cluster Topology: Physical Multi-Node Bar -->
         <section>
             <div class="flex items-center justify-between mb-4">
@@ -466,7 +548,7 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
                     <strong class="text-emerald-400 font-mono">{len(nodes_list)}</strong>
                 </div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {nodes_html}
             </div>
         </section>
