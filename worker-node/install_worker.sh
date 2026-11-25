@@ -15,8 +15,9 @@ echo "Configuring Worker Identity: ${NODE_ID} (Port: ${AGENT_PORT})"
 
 # 1. Update and install virtualization packages
 echo "[1/5] Installing KVM, QEMU and virtualization tools..."
-sudo apt-get update -y
-sudo apt-get install -y \
+sudo apt-get clean
+sudo apt-get update -o Acquire::ForceIPv4=true -y
+sudo apt-get install -y --fix-missing \
     qemu-system-arm \
     qemu-utils \
     cloud-image-utils \
