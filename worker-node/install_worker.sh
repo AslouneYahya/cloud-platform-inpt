@@ -16,6 +16,11 @@ echo "Configuring Worker Identity: ${NODE_ID} (Port: ${AGENT_PORT})"
 # 1. Update and install virtualization packages
 echo "[1/5] Installing KVM, QEMU and virtualization tools..."
 echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4 > /dev/null
+
+# Disable deprecated/broken Debian Bullseye security mirror that throws 404s
+sudo sed -i 's|^deb http://security.debian.org|# deb http://security.debian.org|g' /etc/apt/sources.list 2>/dev/null || true
+sudo sed -i 's|^deb https://security.debian.org|# deb https://security.debian.org|g' /etc/apt/sources.list 2>/dev/null || true
+
 sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean
 sudo apt-get update -y
@@ -24,11 +29,8 @@ sudo apt-get install -y --fix-missing --no-install-recommends \
     qemu-utils \
     cloud-image-utils \
     bridge-utils \
-    avahi-daemon \
     python3-pip \
-    python3-venv \
-    curl \
-    git
+    python3-venv
 
 # 2. Check hardware acceleration (/dev/kvm)
 echo "[2/5] Checking hardware virtualization support..."
