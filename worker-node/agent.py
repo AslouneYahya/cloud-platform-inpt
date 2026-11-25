@@ -32,10 +32,32 @@ from pydantic import BaseModel, Field
 import uvicorn
 
 import config
+import ha
 import image_manager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] [Worker-Agent] %(message)s")
 logger = logging.getLogger("worker-agent")
+
+def on_worker_promoted():
+    logger.warning("=" * 60)
+    logger.warning("🚨 [HA FAILOVER] THIS WORKER NODE HAS PROMOTED ITSELF TO ACTIVE MASTER! 🚨")
+    logger.warning("Starting Master Node service on port 5000...")
+    logger.warning("=" * 60)
+    try:
+        subprocess.Popen(["sudo", "systemctl", "start", "inpt-master-node.service"])
+    except Exception as e:
+        logger.warning("Could not start inpt-master-node.service via systemctl: %s", e)
+
+# High Availability (HA) Manager
+# worker-raspberrypi has priority 80, worker-pi-02 has priority 60
+worker_prio = 80 if ("worker-raspberrypi" in config.NODE_ID or "01" in config.NODE_ID) else 60
+ha_manager = ha.WorkerHAManager(
+    node_id=config.NODE_ID,
+    role="STANDBY",
+    priority=worker_prio,
+    master_url=config.MASTER_URL,
+    on_promoted=on_worker_promoted
+)
 
 app = FastAPI(
     title="INPT Cloud Platform — Worker Node Agent",
@@ -252,6 +274,13 @@ async def startup_event():
     asyncio.create_task(heartbeat_loop())
     # 4. Start resilient outbound task polling loop
     asyncio.create_task(task_worker_loop())
+    # 5. Start High Availability (HA) Master watchdog & leader election thread
+    ha_manager.start_watchdog_thread()
+
+@app.get("/ha")
+def get_ha_status():
+    """Return live HA election and watchdog metrics."""
+    return {"status": "SUCCESS", "ha": ha_manager.get_status()}
 
 # ── VM Provisioning & Lifecycle Endpoints ─────────────────────────────────────
 

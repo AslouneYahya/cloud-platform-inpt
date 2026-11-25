@@ -6,10 +6,18 @@ from typing import Dict, Optional
 from fastapi import FastAPI, Header, HTTPException, status
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from app import config, dashboard, nodes, schemas
+from app import config, dashboard, ha, nodes, schemas
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("master-node")
+
+# High Availability (HA) Manager for Master Node
+cluster_ha = ha.HAManager(
+    node_id=config.CLUSTER_NODE_NAME,
+    role="MASTER",
+    priority=100,
+    master_url=f"http://127.0.0.1:{config.PORT}"
+)
 
 app = FastAPI(
     title="INPT Cloud Platform — Master Node Listener",
@@ -190,16 +198,26 @@ def complete_node_task(task_id: str, payload: dict, x_cluster_token: Optional[st
     success = nodes.node_registry.complete_task(task_id, payload)
     return {"status": "SUCCESS" if success else "NOT_FOUND"}
 
+@app.get("/api/cluster/ha")
+def get_cluster_ha():
+    """Return live High Availability (HA) cluster leader election telemetry."""
+    return {"status": "SUCCESS", "ha": cluster_ha.get_status()}
+
 @app.get("/api/cluster/nodes")
 def get_cluster_nodes():
-    """Return all cluster nodes (Master + Workers) with live statuses and telemetry for clickable UI."""
+    """Return all cluster nodes (Master + Workers) with live statuses, capacity, and HA telemetry."""
     try:
         master_health = get_health().model_dump()
     except Exception:
         master_health = None
     all_nodes = nodes.node_registry.get_all(master_health)
     capacity = nodes.node_registry.get_cluster_capacity(master_health)
-    return {"status": "SUCCESS", "nodes": all_nodes, "capacity": capacity}
+    return {
+        "status": "SUCCESS",
+        "nodes": all_nodes,
+        "capacity": capacity,
+        "ha": cluster_ha.get_status()
+    }
 
 @app.get("/api/cluster/capacity", response_model=schemas.ClusterCapacityResponse)
 def get_cluster_capacity():
@@ -235,7 +253,7 @@ def get_cluster_node_detail(node_id: str):
 
 @app.post("/vms", response_model=schemas.VmOperationResponse, status_code=status.HTTP_201_CREATED)
 def provision_vm(req: schemas.VmProvisionRequest, _: None = Header(None)):
-    """Schedule and provision VM on the best cluster node (Worker or Master)."""
+    """Schedule and provision VM on the best cluster node (Worker or Master) via elastic pool."""
     logger.info("Received VM provisioning request: id=%s name=%s (ram=%dMB)", req.vm_id, req.name, req.ram_mb)
 
     # 1. Ask scheduler to assign target node
@@ -246,16 +264,17 @@ def provision_vm(req: schemas.VmProvisionRequest, _: None = Header(None)):
     target_node = nodes.node_registry.schedule_target_node(req.ram_mb, master_health, req.target_node_id)
     target_node_id = target_node.get("node_id", config.CLUSTER_NODE_NAME)
 
-    # 2. If target is an online Worker, forward execution over LAN
+    # 2. If target is a Worker or elastic candidate, forward execution to elastic worker pool
     if target_node.get("role") == "WORKER" and target_node.get("status") == "ONLINE":
         try:
             worker_resp = nodes.node_registry.forward_request(target_node, "/vms", "POST", req.model_dump())
+            exec_node = worker_resp.get("node_id") or worker_resp.get("executed_by") or target_node_id
             return schemas.VmOperationResponse(
                 status=worker_resp.get("status", "SUCCESS"),
                 vm_id=worker_resp.get("vm_id", req.vm_id),
                 ip_address=worker_resp.get("ip_address"),
-                node_id=target_node_id,
-                message=worker_resp.get("message", f"VM successfully deployed on Worker node {target_node_id}"),
+                node_id=exec_node,
+                message=worker_resp.get("message", f"VM successfully deployed on Worker node {exec_node}"),
                 output=worker_resp.get("output")
             )
         except Exception as e:
@@ -291,8 +310,25 @@ def provision_vm(req: schemas.VmProvisionRequest, _: None = Header(None)):
 
 @app.post("/vms/{vm_id}/action", response_model=schemas.VmOperationResponse)
 def vm_power_action(vm_id: str, req: schemas.VmActionRequest, _: None = Header(None)):
-    """Start or Stop an existing instance."""
+    """Start or Stop an existing instance on its hosting worker or local master."""
     logger.info("Action '%s' requested for VM %s", req.action, vm_id)
+
+    # 1. Check if VM is hosted on a remote Worker node
+    hosting_node = nodes.node_registry.find_node_for_vm(vm_id)
+    if hosting_node and hosting_node.get("role") == "WORKER" and hosting_node.get("status") == "ONLINE":
+        try:
+            worker_resp = nodes.node_registry.forward_request(hosting_node, f"/vms/{vm_id}/action", "POST", req.model_dump())
+            return schemas.VmOperationResponse(
+                status=worker_resp.get("status", "SUCCESS"),
+                vm_id=vm_id,
+                node_id=hosting_node.get("node_id"),
+                message=worker_resp.get("message", f"Action {req.action} executed on Worker {hosting_node.get('node_id')}")
+            )
+        except Exception as e:
+            logger.error("Failed to forward power action to worker %s: %s. Trying local fallback.",
+                         hosting_node.get("node_id"), e)
+
+    # 2. Local execution on Master
     data = run_script("power.sh", ["--id", vm_id, "--action", req.action])
 
     return schemas.VmOperationResponse(
@@ -304,8 +340,25 @@ def vm_power_action(vm_id: str, req: schemas.VmActionRequest, _: None = Header(N
 
 @app.delete("/vms/{vm_id}", response_model=schemas.VmOperationResponse)
 def deprovision_vm(vm_id: str, _: None = Header(None)):
-    """Destroy VM and clean up all resources."""
+    """Destroy VM and clean up all resources across cluster workers or local master."""
     logger.info("Deprovisioning requested for VM %s", vm_id)
+
+    # 1. Check if VM is hosted on a remote Worker node
+    hosting_node = nodes.node_registry.find_node_for_vm(vm_id)
+    if hosting_node and hosting_node.get("role") == "WORKER" and hosting_node.get("status") == "ONLINE":
+        try:
+            worker_resp = nodes.node_registry.forward_request(hosting_node, f"/vms/{vm_id}", "DELETE", {})
+            return schemas.VmOperationResponse(
+                status=worker_resp.get("status", "SUCCESS"),
+                vm_id=vm_id,
+                node_id=hosting_node.get("node_id"),
+                message=worker_resp.get("message", f"VM destroyed on Worker {hosting_node.get('node_id')}")
+            )
+        except Exception as e:
+            logger.error("Failed to forward deprovision to worker %s: %s. Trying local fallback.",
+                         hosting_node.get("node_id"), e)
+
+    # 2. Local execution on Master
     data = run_script("deprovision.sh", ["--id", vm_id])
 
     return schemas.VmOperationResponse(

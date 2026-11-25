@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 import threading
+import time
 from typing import Dict, List, Optional
 import urllib.request
 import urllib.error
@@ -35,8 +36,11 @@ class NodeRegistry:
     def __init__(self):
         self.nodes: Dict[str, dict] = {}
         self.pending_tasks: Dict[str, List[dict]] = {}
+        self.shared_tasks: List[dict] = []
+        self.claimed_tasks: Dict[str, dict] = {}
         self.task_results: Dict[str, dict] = {}
         self.task_events: Dict[str, threading.Event] = {}
+        self._lock = threading.RLock()
         self._load_from_disk()
 
     def _load_from_disk(self):
@@ -280,34 +284,152 @@ class NodeRegistry:
                     chosen["node_id"], chosen["role"], chosen["ram_used_mb"], chosen["ram_total_mb"])
         return chosen
 
+    def _recover_stalled_tasks(self):
+        """
+        Watchdog & Auto-failover:
+        1. Revokes tasks claimed by a worker that failed to complete within 18s or went offline,
+           and pushes them back to shared_tasks for healthy workers.
+        2. Detects pending tasks assigned to offline nodes and transfers them to the elastic shared pool.
+        """
+        now = time.time()
+        now_dt = datetime.now(timezone.utc)
+
+        # 1. Check claimed tasks for timeout or dead claiming worker
+        for task_id, claim in list(self.claimed_tasks.items()):
+            claimed_by = claim.get("claimed_by")
+            claimed_at = claim.get("claimed_at", 0)
+            worker = self.nodes.get(claimed_by, {})
+            last_hb_str = worker.get("last_heartbeat")
+            is_worker_alive = True
+            if last_hb_str:
+                try:
+                    is_worker_alive = (now_dt - datetime.fromisoformat(last_hb_str)).total_seconds() < 25
+                except Exception:
+                    pass
+
+            if (now - claimed_at > 18.0) or not is_worker_alive:
+                logger.warning("Watchdog: Worker '%s' stalled on task %s (alive=%s). Reclaiming task.",
+                               claimed_by, task_id, is_worker_alive)
+                task = claim.get("task")
+                self.claimed_tasks.pop(task_id, None)
+                if task:
+                    self.shared_tasks.insert(0, task)
+
+        # 2. Check pending tasks queued for nodes that went OFFLINE
+        for node_id, tasks in list(self.pending_tasks.items()):
+            node = self.nodes.get(node_id, {})
+            last_hb_str = node.get("last_heartbeat")
+            is_alive = False
+            if last_hb_str:
+                try:
+                    is_alive = (now_dt - datetime.fromisoformat(last_hb_str)).total_seconds() < 25
+                except Exception:
+                    pass
+            if not is_alive and tasks:
+                logger.warning("Watchdog: Node '%s' is OFFLINE. Moving %d pending tasks to shared pool.",
+                               node_id, len(tasks))
+                self.shared_tasks.extend(tasks)
+                self.pending_tasks[node_id] = []
+
     def poll_tasks(self, node_id: str) -> List[dict]:
-        """Worker retrieves pending tasks waiting for execution."""
-        tasks = self.pending_tasks.pop(node_id, [])
-        if not tasks:
-            for k in list(self.pending_tasks.keys()):
-                if k.lower() == node_id.lower() or node_id.lower() in k.lower():
-                    tasks = self.pending_tasks.pop(k, [])
-                    break
-        return tasks
+        """
+        Elastic Task Polling:
+        1. Worker checks its dedicated task queue.
+        2. If empty, worker checks the shared elastic pool for unassigned tasks it can handle.
+        """
+        with self._lock:
+            self._recover_stalled_tasks()
+
+            # 1. Dedicated node tasks
+            tasks = self.pending_tasks.pop(node_id, [])
+            if not tasks:
+                for k in list(self.pending_tasks.keys()):
+                    if k.lower() == node_id.lower() or node_id.lower() in k.lower():
+                        tasks = self.pending_tasks.pop(k, [])
+                        break
+
+            if tasks:
+                return tasks
+
+            # 2. Elastic shared pool tasks
+            if not self.shared_tasks:
+                return []
+
+            node = self.nodes.get(node_id, {})
+            free_ram = node.get("ram_total_mb", 3800) - node.get("ram_used_mb", 0)
+
+            # Find first task that fits node capacity
+            for idx, task in enumerate(self.shared_tasks):
+                payload = task.get("payload", {})
+                req_ram = safe_int(payload.get("ram_mb", 256), 256)
+                if free_ram >= req_ram or task.get("method") in ("DELETE", "POST") and "/action" in task.get("path", ""):
+                    claimed_task = self.shared_tasks.pop(idx)
+                    task_id = claimed_task["task_id"]
+                    self.claimed_tasks[task_id] = {
+                        "task": claimed_task,
+                        "claimed_by": node_id,
+                        "claimed_at": time.time(),
+                        "req_ram": req_ram
+                    }
+                    logger.info("Worker '%s' claimed elastic task %s (%s %s)",
+                                node_id, task_id, claimed_task.get("method"), claimed_task.get("path"))
+                    return [claimed_task]
+
+            return []
 
     def complete_task(self, task_id: str, result: dict) -> bool:
         """Worker reports task execution output back to Master."""
-        self.task_results[task_id] = result
-        evt = self.task_events.get(task_id)
-        if evt:
-            evt.set()
-            return True
-        return False
+        with self._lock:
+            claim = self.claimed_tasks.pop(task_id, None)
+            if claim:
+                result["executed_by"] = claim.get("claimed_by")
+            self.task_results[task_id] = result
+            evt = self.task_events.get(task_id)
+            if evt:
+                evt.set()
+            return True if (claim is not None or evt is not None) else False
 
-    def forward_request(self, node: dict, path: str, method: str = "POST", payload: Optional[dict] = None) -> dict:
+    def find_node_for_vm(self, vm_id: str) -> Optional[dict]:
         """
-        Dispatches VM operations to the Worker Node via resilient Task Queue over Cloudflare Tunnel.
-        Immune to university campus Wi-Fi Client Isolation (AP Isolation) and local NAT.
+        Locates which cluster node hosts the specified VM instance.
+        Inspects worker telemetry (hosted_vms) and local Master storage.
         """
-        node_id = node.get("node_id")
+        now = datetime.now(timezone.utc)
+        # 1. Search worker nodes
+        for node_id, node in self.nodes.items():
+            last_hb = node.get("last_heartbeat")
+            is_online = False
+            if last_hb:
+                try:
+                    is_online = (now - datetime.fromisoformat(last_hb)).total_seconds() < 30
+                except Exception:
+                    pass
+
+            for v in node.get("hosted_vms", []):
+                if v.get("vm_id") == vm_id or v.get("name") == vm_id:
+                    node_copy = dict(node)
+                    node_copy["status"] = "ONLINE" if is_online else "OFFLINE"
+                    return node_copy
+
+        # 2. Check local master storage
+        master_vm_path = Path("/var/lib/inpt-cloud/vms") / vm_id
+        if master_vm_path.exists():
+            return {
+                "node_id": config.CLUSTER_NODE_NAME,
+                "role": "MASTER",
+                "status": "ONLINE"
+            }
+
+        return None
+
+    def forward_request(self, node: Optional[dict], path: str, method: str = "POST",
+                        payload: Optional[dict] = None, timeout: float = 25.0) -> dict:
+        """
+        Dispatches operations to a specific Worker Node or the Elastic Shared Pool.
+        Monitored by active watchdog with automatic failover and completion event notification.
+        """
         task_id = str(uuid.uuid4())
         evt = threading.Event()
-        self.task_events[task_id] = evt
 
         task = {
             "task_id": task_id,
@@ -315,19 +437,45 @@ class NodeRegistry:
             "method": method,
             "payload": payload or {}
         }
-        self.pending_tasks.setdefault(node_id, []).append(task)
-        logger.info("Queued task %s (%s %s) for Worker '%s'", task_id, method, path, node_id)
 
-        # Wait up to 30 seconds for Worker agent to poll, provision KVM, and report back
-        finished = evt.wait(timeout=30.0)
+        with self._lock:
+            self.task_events[task_id] = evt
+            target_id = node.get("node_id") if node else None
+            # If target node is specified and online, put in its queue
+            if target_id and node.get("status") == "ONLINE" and node.get("role") == "WORKER":
+                self.pending_tasks.setdefault(target_id, []).append(task)
+                logger.info("Queued targeted task %s (%s %s) for Worker '%s'", task_id, method, path, target_id)
+            else:
+                # Add to decentralized elastic shared pool
+                self.shared_tasks.append(task)
+                logger.info("Queued elastic task %s (%s %s) in shared pool (target was %s)",
+                            task_id, method, path, target_id or "NONE")
 
-        self.task_events.pop(task_id, None)
-        if finished:
+        # Wait with active watchdog loop
+        start_time = time.time()
+        while not evt.is_set() and (time.time() - start_time) < timeout:
+            evt.wait(timeout=1.0)
+            with self._lock:
+                self._recover_stalled_tasks()
+
+        with self._lock:
+            self.task_events.pop(task_id, None)
+            self.claimed_tasks.pop(task_id, None)
+            # Remove from queues if still unexecuted
+            if task in self.shared_tasks:
+                self.shared_tasks.remove(task)
+            for q in self.pending_tasks.values():
+                if task in q:
+                    q.remove(task)
+
+        if evt.is_set():
             res = self.task_results.pop(task_id, {})
-            logger.info("Task %s successfully executed by Worker '%s'", task_id, node_id)
+            exec_node = res.get("executed_by") or (node.get("node_id") if node else "worker")
+            logger.info("Task %s successfully completed by '%s'", task_id, exec_node)
             return res
         else:
-            logger.warning("Worker '%s' timed out after 30s on task %s", node_id, task_id)
-            raise TimeoutError(f"Worker '{node_id}' timed out after 30s on task {task_id}")
+            target_name = node.get("node_id") if node else "elastic-pool"
+            logger.warning("Task %s timed out after %.1fs on target '%s'", task_id, timeout, target_name)
+            raise TimeoutError(f"Task {task_id} timed out after {timeout}s on {target_name}")
 
 node_registry = NodeRegistry()

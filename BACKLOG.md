@@ -102,10 +102,11 @@
 * [x] **US5.1 : Support Multi-Workers Simultanés (Scale-Out Horizontal N > 1)**
   * Capacité d'enrôler dynamiquement plusieurs nœuds workers simultanés (`worker-01`, `worker-02`, ..., `worker-N`) au sein du cluster.
   * Agrégation de la capacité de calcul globale (CPU/RAM cumulés) et supervision consolidée de l'ensemble de la flotte de nœuds.
-* [ ] **US5.2 : Architecture Décentralisée sans Nœud Fixe (Pool Élastique de Workers)**
-  * Découplage complet de l'orchestration : élimination de tout adressage ou ciblage statique d'un nœud worker prédéterminé.
-  * Système de file de tâches distribuée (*Task Queue*) où n'importe quel worker disponible du pool peut consommer, exécuter et acquitter les ordres de provisionnement de manière autonome.
-  * Auto-exclusion (*Healthcheck timeout*) et réassignation automatique des instances en cas de défaillance imprévue d'un nœud worker.
+* [x] **US5.2 : Architecture Décentralisée sans Nœud Fixe (Pool Élastique de Workers)**
+  * Découplage complet de l'orchestration : élimination de tout adressage statique ou dépendance à un nœud physique unique.
+  * File de tâches élastique partagée (*Shared Task Queue*) où tout worker sain du pool peut revendiquer (*claim*) et exécuter les opérations de provisionnement selon ses ressources libres.
+  * Watchdog actif avec basculement automatique (*Auto-failover*) : détection des workers bloqués (> 18s) ou hors-ligne, réassignation immédiate des tâches dans le pool partagé.
+  * Routage dynamique transparent des opérations du cycle de vie des VMs (démarrage, arrêt, suppression KVM) vers le nœud hébergeant l'instance.
 * [ ] **US5.3 : Authentification Sociale OAuth2 / OIDC avec Google Sign-In**
   * Intégration de Spring Security OAuth2 Client pour la connexion via un compte Google (`@inpt.ma` ou personnel).
   * Validation cryptographique des ID Tokens, mapping automatique du profil utilisateur et persistance en base de données PostgreSQL.
