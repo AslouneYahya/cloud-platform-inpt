@@ -140,8 +140,8 @@ def get_all_cluster_vms(cluster_nodes: Optional[List[Dict[str, Any]]] = None) ->
 
     if cluster_nodes:
         for node in cluster_nodes:
-            if node.get("role") == "WORKER":
-                node_name = node.get("node_id", "worker")
+            if node.get("role") in ("WORKER", "PEER"):
+                node_name = node.get("node_id", "peer")
                 for vm in node.get("hosted_vms", []):
                     if not any(v.get("vm_id") == vm.get("vm_id") for v in all_vms):
                         vm_copy = dict(vm)
