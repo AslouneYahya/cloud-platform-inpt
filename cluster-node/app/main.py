@@ -309,7 +309,74 @@ def complete_peer_task(task_id: str, payload: dict, x_cluster_token: Optional[st
     success = peer_mesh.complete_task(task_id, payload)
     return {"status": "SUCCESS" if success else "NOT_FOUND"}
 
-# ── Background Peer Mesh Synchronization Loops ───────────────────────────────
+# ── Background Peer Mesh Synchronization & Heartbeat Broadcast ─────────────
+
+def call_cluster_domain(path: str, payload: dict) -> bool:
+    """Send authenticated request to the cluster ingress domain."""
+    url = f"{config.TUNNEL_DOMAIN}{path}"
+    headers = {
+        "Content-Type": "application/json",
+        "X-Cluster-Token": config.CLUSTER_TOKEN,
+        "User-Agent": "inpt-node/2.0"
+    }
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            return resp.status in (200, 201)
+    except Exception as e:
+        logger.debug("call_cluster_domain to %s failed: %s", url, e)
+        return False
+
+def register_self_with_cluster():
+    """Announce this peer node to the cluster mesh on boot."""
+    try:
+        health_resp = get_health()
+        payload = {
+            "node_id": config.NODE_ID,
+            "hostname": config.HOSTNAME,
+            "lan_ip": "127.0.0.1",
+            "agent_port": config.PORT,
+            "cpu_cores": health_resp.cpu_cores,
+            "ram_total_mb": health_resp.ram_total_mb,
+            "disk_total_gb": health_resp.disk_total_gb or 29.0,
+            "disk_free_gb": health_resp.disk_free_gb,
+            "node_model": health_resp.node_model or "Raspberry Pi 4 Model B"
+        }
+        call_cluster_domain("/api/nodes/register", payload)
+        logger.info("Announced node '%s' to cluster ingress domain", config.NODE_ID)
+    except Exception as e:
+        logger.warning("Failed to auto-register node with cluster: %s", e)
+
+async def peer_heartbeat_broadcast_loop():
+    """Stream live hardware and VM metrics to the cluster mesh every 5s."""
+    await asyncio.sleep(2)
+    while True:
+        try:
+            health_resp = get_health()
+            local_vms = dashboard.get_deployed_vms()
+            active_vms = sum(1 for v in local_vms if v.get("status") == "RUNNING")
+            payload = {
+                "node_id": config.NODE_ID,
+                "status": "ONLINE",
+                "cpu_usage_pct": float(health_resp.load_1m or "0.1") * 25.0,
+                "cpu_temp": health_resp.cpu_temp,
+                "load_1m": health_resp.load_1m,
+                "ram_used_mb": health_resp.ram_used_mb,
+                "ram_total_mb": health_resp.ram_total_mb,
+                "disk_free_gb": health_resp.disk_free_gb,
+                "active_vms": active_vms,
+                "hosted_vms": local_vms
+            }
+            # 1. Update local peer registry directly
+            req = schemas.NodeHeartbeatRequest(**payload)
+            peer_mesh.heartbeat_peer(req)
+
+            # 2. Broadcast to cluster domain (ensures all peers receive it via tunnel)
+            call_cluster_domain("/api/nodes/heartbeat", payload)
+        except Exception as e:
+            logger.debug("Heartbeat broadcast error: %s", e)
+        await asyncio.sleep(5)
 
 def process_dispatched_task(task: dict) -> dict:
     path = task.get("path", "")
@@ -336,11 +403,39 @@ async def task_execution_loop():
     """Poll the cluster task queue for operations dispatched to this peer."""
     while True:
         try:
+            # 1. Local mesh poll
             tasks = peer_mesh.poll_tasks(config.NODE_ID)
+
+            # 2. Remote domain poll (if peer is polling through domain tunnel)
+            if not tasks:
+                poll_url = f"{config.TUNNEL_DOMAIN}/api/nodes/{config.NODE_ID}/poll"
+                headers = {
+                    "Content-Type": "application/json",
+                    "X-Cluster-Token": config.CLUSTER_TOKEN,
+                    "User-Agent": "inpt-node/2.0"
+                }
+                req = urllib.request.Request(poll_url, data=b"{}", headers=headers, method="POST")
+                try:
+                    with urllib.request.urlopen(req, timeout=4) as resp:
+                        if resp.status == 200:
+                            data = json.loads(resp.read().decode("utf-8"))
+                            tasks = data.get("tasks", [])
+                except Exception:
+                    pass
+
             for task in tasks:
                 task_id = task.get("task_id")
                 result = await asyncio.get_event_loop().run_in_executor(None, process_dispatched_task, task)
                 peer_mesh.complete_task(task_id, result)
+                # Report completion back to cluster domain
+                comp_url = f"{config.TUNNEL_DOMAIN}/api/nodes/tasks/{task_id}/complete"
+                comp_data = json.dumps(result).encode("utf-8")
+                comp_req = urllib.request.Request(comp_url, data=comp_data, headers={"Content-Type": "application/json", "X-Cluster-Token": config.CLUSTER_TOKEN}, method="POST")
+                try:
+                    with urllib.request.urlopen(comp_req, timeout=4):
+                        pass
+                except Exception:
+                    pass
         except Exception as e:
             logger.debug("Task execution loop error: %s", e)
         await asyncio.sleep(1.5)
@@ -348,9 +443,13 @@ async def task_execution_loop():
 @app.on_event("startup")
 async def startup_event():
     logger.info("Starting INPT Cloud Platform Peer Node '%s' on port %d...", config.NODE_ID, config.PORT)
-    # Ensure Golden Images are downloaded and verified
+    # 1. Ensure Golden Images are downloaded and verified
     asyncio.get_event_loop().run_in_executor(None, image_manager.ensure_base_images)
-    # Start task execution loop
+    # 2. Initial self-registration to cluster mesh
+    asyncio.get_event_loop().run_in_executor(None, register_self_with_cluster)
+    # 3. Start periodic heartbeat broadcast loop
+    asyncio.create_task(peer_heartbeat_broadcast_loop())
+    # 4. Start task execution loop
     asyncio.create_task(task_execution_loop())
 
 if __name__ == "__main__":
