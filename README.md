@@ -104,11 +104,22 @@ Orchestration distribuée multi-nœuds avec séparation stricte entre le Master 
 
 ---
 
+### 13. Cluster 100% Décentralisé Peer-to-Peer (P2P) & Haute Disponibilité (Sprint 5)
+Migration vers un démon universel identique (`cluster-node`) sur chaque Raspberry Pi 4 : élimination du point unique de défaillance (SPOF) grâce à des répliques `cloudflared`, synchronisation **Gossip** des tables de pairs, **Garbage Collector TTL (180s)**, file de tâches partagée avec Watchdog (18s) et basculement sans interruption en cas de panne matérielle d'un nœud. *(L'authentification sociale OAuth2 Google / GitHub et le durcissement Control Plane `US6.1`–`US6.4` constituent le Sprint 6 dans [BACKLOG.md](BACKLOG.md)).*
+
+| Flotte P2P Complète (3 / 3 Nœuds Pairs Actifs) | Basculement Zéro Downtime après Arrêt de `node-pi-01` |
+| :---: | :---: |
+| ![Dashboard P2P 3 Nœuds en Ligne](<screenshots/sprint5/dashboard will all nodes online.png>) | ![Dashboard après arrêt de Node 1](<screenshots/sprint5/dashboard after stopping node 1.png>) |
+
+👉 **[Consulter le rapport complet du Sprint 5 (Réalisations, Reste à faire, Problèmes, Choix techniques & Captures)](SPRINT5_README.md)** *(également disponible dans [screenshots/sprint5/README.md](screenshots/sprint5/README.md))*
+
+---
+
 ## 🛠️ Stack Technique & Justification des Choix
 
 * **Reverse Proxy & TLS — Nginx (Alpine) :** Choisi pour son empreinte mémoire minime (<15 Mo), son débit élevé et sa fiabilité pour gérer la terminaison TLS 1.3, le forçage HTTPS, le HSTS et les en-têtes CSP stricts.
 * **Backend — Spring Boot 3.3 (Java 21) & Spring Security 6 :** Retenu pour sa robustesse d'entreprise, sa gestion avancée du multithreading (Virtual Threads Java 21) et son écosystème mature garantissant une séparation stricte des couches (Controller, Service, Repository).
-* **Nœud Maître (Edge) — Raspberry Pi 4 (ARM64) & FastAPI (Python 3) :** Le Raspberry Pi 4 offre une plateforme matérielle réelle basse consommation émulant un nœud bare-metal ; FastAPI a été sélectionné pour ses performances asynchrones natives et sa simplicité d'interaction directe avec les scripts système Bash Linux.
+* **Nœuds Edge P2P (`cluster-node`) & Hyperviseur KVM — Raspberry Pi 4 (ARM64), FastAPI & QEMU/KVM :** Chaque Raspberry Pi 4 exécute un démon pair homogène (`cluster-node`) avec accélération matérielle `/dev/kvm` (`-enable-kvm -cpu host`), disques différentiels QCOW2 Copy-on-Write (`< 0.2s`), synchronisation Gossip entre répliques et interaction asynchrone native avec les scripts Bash/systemd Linux.
 * **Connectivité Zero Trust — Cloudflare Tunnel (`cloudflared`) :** Élimine l'ouverture de ports entrants sur la box / pare-feu (aucun risque de scan de ports) et contourne l'isolation Wi-Fi universitaire grâce à un tunnel chiffré sortant sécurisé vers le domaine public.
 * **Frontend — React 18 & Vite :** Vite procure un rechargement à chaud (HMR) instantané et des builds légers ; React 18 permet une interface réactive avec gestion fine des états en temps réel (streaming de logs, télémétrie matérielle, terminal Web SSH).
 * **Base de Données — PostgreSQL 16 (Identifiants UUIDv7) :** SGBD relationnel garantissant la conformité ACID complète ; les UUIDv7 combinent un timestamp temporel et de l'aléa cryptographique, éliminant le risque d'énumération d'URL tout en préservant l'efficacité des index B-Tree.
