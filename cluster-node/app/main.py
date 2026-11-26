@@ -121,6 +121,7 @@ def get_dashboard():
         health_data = get_health().model_dump()
     except Exception:
         health_data = {"node_name": config.NODE_ID, "status": "HEALTHY"}
+    health_data["current_host_id"] = config.NODE_ID
     all_peers = peer_mesh.get_all(health_data)
     all_vms = dashboard.get_all_cluster_vms(all_peers)
     return dashboard.render_dashboard_html(health_data, all_vms, all_peers)
@@ -133,8 +134,15 @@ def get_cluster_nodes():
     except Exception:
         health_data = None
     all_nodes = peer_mesh.get_all(health_data)
+    for n in all_nodes:
+        n["is_serving_host"] = (n.get("node_id") == config.NODE_ID)
     capacity = peer_mesh.get_cluster_capacity(health_data)
-    return {"status": "SUCCESS", "nodes": all_nodes, "capacity": capacity}
+    return {
+        "status": "SUCCESS",
+        "nodes": all_nodes,
+        "capacity": capacity,
+        "serving_host": config.NODE_ID
+    }
 
 @app.get("/api/cluster/capacity", response_model=schemas.ClusterCapacityResponse)
 def get_cluster_capacity():

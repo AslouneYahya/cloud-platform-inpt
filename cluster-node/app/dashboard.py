@@ -153,8 +153,9 @@ def get_all_cluster_vms(cluster_nodes: Optional[List[Dict[str, Any]]] = None) ->
     return all_vms
 
 def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], cluster_nodes: Optional[List[Dict[str, Any]]] = None) -> str:
-    """Render a standalone, high-performance web dashboard for the Master Node."""
+    """Render a standalone, high-performance web dashboard for the Cluster Peer Node."""
     node_name = str(health.get("node_name", "raspberrypi"))
+    current_host_id = str(health.get("current_host_id") or node_name)
     node_model = str(health.get("node_model", "Raspberry Pi 4 Model B"))
     status = str(health.get("status", "HEALTHY"))
     uptime = str(health.get("uptime", "up 3 hours"))
@@ -231,8 +232,24 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
         for node in nodes_list:
             is_master = node.get("role") == "MASTER"
             is_online = node.get("status") == "ONLINE"
-            display_role = "PEER" if node.get("role") in ("WORKER", "PEER") else node.get("role", "PEER")
-            role_badge = "bg-sky-500/10 text-sky-400 border-sky-500/30"
+            n_id = node.get("node_id", "node")
+            display_name = n_id.replace("worker-", "node-")
+            is_current_host = (n_id == current_host_id or node.get("hostname") == current_host_id or
+                               (current_host_id.startswith("node-pi-") and n_id == current_host_id))
+
+            if is_current_host:
+                card_border = "border-emerald-500/70 shadow-lg shadow-emerald-500/15 hover:border-emerald-400 bg-slate-900/95"
+                card_icon = "📍"
+                role_badge = "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                display_role = "PEER (HÔTE)"
+                host_tag = '<span class="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-500/30 font-mono">HÔTE ACTIF</span>'
+            else:
+                card_border = "border-slate-800 hover:border-sky-500/60 bg-slate-900"
+                card_icon = "🌐"
+                role_badge = "bg-slate-800 text-slate-300 border-slate-700"
+                display_role = "PEER"
+                host_tag = ""
+
             status_dot = "bg-emerald-400 animate-pulse" if is_online else "bg-rose-400"
             status_text = "ONLINE" if is_online else "OFFLINE"
             status_color = "text-emerald-400" if is_online else "text-rose-400"
@@ -244,25 +261,24 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
             n_active_vms = safe_int(node.get("active_vms", 0))
             n_lan_ip = node.get("lan_ip", "127.0.0.1")
             n_model = node.get("node_model", "Raspberry Pi 4 Model B")
-            n_id = node.get("node_id", "node")
-            display_name = n_id.replace("worker-", "node-")
 
             nodes_html += f"""
-            <div onclick="openNodeModal('{n_id}')" class="bg-slate-900 border border-slate-800 hover:border-sky-500/60 rounded-2xl p-5 shadow-lg relative overflow-hidden cursor-pointer hover:scale-[1.01] transition duration-200 group">
+            <div onclick="openNodeModal('{n_id}')" class="{card_border} rounded-2xl p-5 shadow-lg relative overflow-hidden cursor-pointer hover:scale-[1.01] transition duration-200 group">
                 <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center space-x-2">
-                        <span class="text-xl">🌐</span>
+                        <span class="text-xl">{card_icon}</span>
                         <div>
                             <div class="font-bold text-white text-sm font-mono flex items-center gap-1.5">
                                 <span>{display_name}</span>
+                                {host_tag}
                                 <span class="text-xs text-sky-400 opacity-0 group-hover:opacity-100 transition">🔍</span>
                             </div>
                             <div class="text-xs text-slate-400">{n_model}</div>
                         </div>
                     </div>
                     <div class="flex items-center space-x-1.5">
-                        {"" if is_master or is_online else f'''<button onclick="event.stopPropagation(); deleteNode('{n_id}')" title="Supprimer ce nœud du cluster" class="text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 px-2 py-0.5 rounded border border-rose-500/30 transition">🗑️</button>'''}
-                        <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold border {role_badge}">
+                        {"" if is_online else f'''<button onclick="event.stopPropagation(); deleteNode('{n_id}')" title="Supprimer ce nœud du cluster" class="text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 px-2 py-0.5 rounded border border-rose-500/30 transition">🗑️</button>'''}
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold border {role_badge} font-mono">
                             {display_role}
                         </span>
                     </div>
@@ -475,10 +491,10 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
             </div>
 
             <div class="flex items-center space-x-4">
-                <div class="flex items-center space-x-2 bg-slate-800/80 border border-slate-700/60 rounded-lg px-3 py-1.5 text-xs text-slate-300">
+                <div class="flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-1.5 text-xs text-emerald-300 font-mono">
                     <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span class="font-mono text-slate-200">{node_name}</span>
-                    <span class="text-slate-500">•</span>
+                    <span>📍 Hôte Actuel : <strong>{current_host_id}</strong></span>
+                    <span class="text-emerald-500/50">•</span>
                     <span class="text-emerald-400 font-semibold">{status}</span>
                 </div>
                 <a href="/health" target="_blank" class="text-xs text-slate-400 hover:text-white transition flex items-center space-x-1 border border-slate-700 rounded-lg px-2.5 py-1.5">
