@@ -231,7 +231,8 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
         for node in nodes_list:
             is_master = node.get("role") == "MASTER"
             is_online = node.get("status") == "ONLINE"
-            role_badge = "bg-amber-500/10 text-amber-400 border-amber-500/30" if is_master else "bg-sky-500/10 text-sky-400 border-sky-500/30"
+            display_role = "PEER" if node.get("role") in ("WORKER", "PEER") else node.get("role", "PEER")
+            role_badge = "bg-sky-500/10 text-sky-400 border-sky-500/30"
             status_dot = "bg-emerald-400 animate-pulse" if is_online else "bg-rose-400"
             status_text = "ONLINE" if is_online else "OFFLINE"
             status_color = "text-emerald-400" if is_online else "text-rose-400"
@@ -244,15 +245,16 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
             n_lan_ip = node.get("lan_ip", "127.0.0.1")
             n_model = node.get("node_model", "Raspberry Pi 4 Model B")
             n_id = node.get("node_id", "node")
+            display_name = n_id.replace("worker-", "node-")
 
             nodes_html += f"""
-            <div onclick="openNodeModal('{n_id}')" class="bg-slate-900 border {'border-amber-500/40 shadow-amber-500/5 hover:border-amber-400' if is_master else 'border-slate-800 hover:border-sky-500/60'} rounded-2xl p-5 shadow-lg relative overflow-hidden cursor-pointer hover:scale-[1.01] transition duration-200 group">
+            <div onclick="openNodeModal('{n_id}')" class="bg-slate-900 border border-slate-800 hover:border-sky-500/60 rounded-2xl p-5 shadow-lg relative overflow-hidden cursor-pointer hover:scale-[1.01] transition duration-200 group">
                 <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center space-x-2">
-                        <span class="text-xl">{'👑' if is_master else '🍓'}</span>
+                        <span class="text-xl">🌐</span>
                         <div>
                             <div class="font-bold text-white text-sm font-mono flex items-center gap-1.5">
-                                <span>{n_id}</span>
+                                <span>{display_name}</span>
                                 <span class="text-xs text-sky-400 opacity-0 group-hover:opacity-100 transition">🔍</span>
                             </div>
                             <div class="text-xs text-slate-400">{n_model}</div>
@@ -261,7 +263,7 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
                     <div class="flex items-center space-x-1.5">
                         {"" if is_master or is_online else f'''<button onclick="event.stopPropagation(); deleteNode('{n_id}')" title="Supprimer ce nœud du cluster" class="text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 px-2 py-0.5 rounded border border-rose-500/30 transition">🗑️</button>'''}
                         <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold border {role_badge}">
-                            {node.get('role', 'WORKER')}
+                            {display_role}
                         </span>
                     </div>
                 </div>
@@ -437,7 +439,7 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Master Node Dashboard — INPT Cloud Platform</title>
+    <title>Cluster Dashboard — INPT Cloud Platform (P2P Mesh)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {{
@@ -466,7 +468,7 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
                 <div>
                     <div class="flex items-center space-x-2">
                         <h1 class="text-base font-bold text-white tracking-wide">INPT CLOUD PLATFORM</h1>
-                        <span class="bg-sky-500/10 text-sky-400 border border-sky-500/20 text-xs px-2 py-0.5 rounded-md font-semibold">Master Node</span>
+                        <span class="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs px-2 py-0.5 rounded-md font-semibold">Peer Node</span>
                     </div>
                     <div class="text-xs text-slate-400">{node_model} • Uptime : {uptime}</div>
                 </div>
@@ -499,15 +501,15 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
                     <div>
                         <div class="flex items-center space-x-2">
                             <h2 class="text-base font-bold text-white tracking-wide">Pool de Calcul Consolidé du Cluster</h2>
-                            <span class="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full">Multi-Workers Scale-Out</span>
+                            <span class="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full">Cluster Décentralisé P2P</span>
                         </div>
-                        <p class="text-xs text-slate-400 mt-0.5">Agrégation matérielle en temps réel de la flotte distribuée ({fleet_online_count}/{fleet_total_count} nœuds actifs)</p>
+                        <p class="text-xs text-slate-400 mt-0.5">Agrégation matérielle en temps réel de la flotte distribuée ({fleet_online_count}/{fleet_total_count} nœuds pairs actifs)</p>
                     </div>
                 </div>
                 <div class="flex items-center space-x-2">
                     <span class="px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold rounded-full flex items-center gap-1.5 font-mono">
                         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        <span>{fleet_workers_count} Worker(s) Enrôlés</span>
+                        <span>{fleet_online_count} Nœud(s) Pairs en Ligne</span>
                     </span>
                 </div>
             </div>
@@ -531,7 +533,7 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
                 <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 text-center">
                     <div class="text-[10px] text-slate-400 uppercase font-semibold">Flotte de Nœuds</div>
                     <div class="text-xl font-bold font-mono text-emerald-400 mt-1">{fleet_online_count} <span class="text-sm font-normal text-slate-400">/ {fleet_total_count}</span></div>
-                    <div class="text-[10px] text-emerald-400 mt-1">1 Master + {fleet_workers_count} Worker(s)</div>
+                    <div class="text-[10px] text-emerald-400 mt-1">{fleet_online_count} Nœuds Pairs Actifs</div>
                 </div>
             </div>
         </section>
@@ -630,7 +632,7 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
         <section class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
             <div class="p-6 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h2 class="text-lg font-bold text-white">Consommation & État Réel des Instances (Master & Workers)</h2>
+                    <h2 class="text-lg font-bold text-white">Consommation & État Réel des Instances (Cluster Décentralisé P2P)</h2>
                     <p class="text-xs text-slate-400 mt-1">Supervision de l'empreinte réelle en temps réel sur l'ensemble du cluster (CPU, RAM, Disque alloué vs consommé)</p>
                 </div>
 
