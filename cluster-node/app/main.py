@@ -303,7 +303,7 @@ def register_peer(req: schemas.NodeRegisterRequest, x_cluster_token: Optional[st
 def peer_heartbeat(req: schemas.NodeHeartbeatRequest, x_cluster_token: Optional[str] = Header(None)):
     verify_token(x_cluster_token)
     updated = peer_mesh.heartbeat_peer(req)
-    return {"status": "SUCCESS", "node_id": req.node_id}
+    return {"status": "SUCCESS", "node_id": req.node_id, "peers": peer_mesh.peers}
 
 @app.post("/api/nodes/{node_id}/poll")
 def poll_peer_tasks(node_id: str, x_cluster_token: Optional[str] = Header(None)):
@@ -331,7 +331,16 @@ def call_cluster_domain(path: str, payload: dict) -> bool:
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=6) as resp:
-            return resp.status in (200, 201)
+            if resp.status in (200, 201):
+                try:
+                    res_body = json.loads(resp.read().decode("utf-8"))
+                    remote_peers = res_body.get("peers")
+                    if remote_peers and isinstance(remote_peers, dict):
+                        peer_mesh.merge_peers(remote_peers)
+                except Exception:
+                    pass
+                return True
+            return False
     except Exception as e:
         logger.debug("call_cluster_domain to %s failed: %s", url, e)
         return False

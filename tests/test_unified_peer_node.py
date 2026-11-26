@@ -165,5 +165,21 @@ class TestUnifiedPeerNode(unittest.TestCase):
         self.assertFalse(is_local)
         self.assertEqual(node_id, "pi-node-gamma")
 
+    def test_gossip_merge_peers(self):
+        """Gossip protocol merges remote peer table and updates fresher timestamps."""
+        remote_data = {
+            "pi-node-delta": {
+                "node_id": "pi-node-delta",
+                "role": "PEER",
+                "status": "ONLINE",
+                "last_heartbeat": "2026-11-26T02:30:00+00:00",
+                "ram_used_mb": 500,
+                "ram_total_mb": 4000
+            }
+        }
+        self.peer_mesh.merge_peers(remote_data)
+        self.assertIn("pi-node-delta", self.peer_mesh.peers)
+        self.assertEqual(self.peer_mesh.peers["pi-node-delta"]["ram_used_mb"], 500)
+
 if __name__ == "__main__":
     unittest.main()

@@ -137,6 +137,26 @@ class PeerMesh:
             })
             return peer
 
+    def merge_peers(self, remote_peers: Dict[str, dict]):
+        """Gossip Synchronization: merge peer registry received from other cluster replicas."""
+        with self._lock:
+            changed = False
+            for nid, rpeer in remote_peers.items():
+                if nid == self.node_id or not isinstance(rpeer, dict):
+                    continue
+                local_peer = self.peers.get(nid)
+                if not local_peer:
+                    self.peers[nid] = rpeer
+                    changed = True
+                else:
+                    r_hb = str(rpeer.get("last_heartbeat", ""))
+                    l_hb = str(local_peer.get("last_heartbeat", ""))
+                    if r_hb > l_hb:
+                        local_peer.update(rpeer)
+                        changed = True
+            if changed:
+                self._save_to_disk()
+
     def get_all(self, local_health: Optional[dict] = None) -> List[dict]:
         """Return all nodes in the mesh (local node + all discovered peers)."""
         now = datetime.now(timezone.utc)
@@ -180,7 +200,7 @@ class PeerMesh:
                 if last_hb_str:
                     try:
                         last_hb = datetime.fromisoformat(last_hb_str)
-                        is_online = (now - last_hb).total_seconds() < 25
+                        is_online = (now - last_hb).total_seconds() < 45
                     except Exception:
                         pass
                 peer["status"] = "ONLINE" if is_online else "OFFLINE"
