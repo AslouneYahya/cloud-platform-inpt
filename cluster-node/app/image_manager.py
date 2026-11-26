@@ -10,7 +10,10 @@ try:
 except AttributeError:
     pass
 
-from config import IMAGES_DIR, IMAGE_URLS
+try:
+    from app.config import IMAGES_DIR, IMAGE_URLS
+except ImportError:
+    from config import IMAGES_DIR, IMAGE_URLS
 
 logger = logging.getLogger("worker-images")
 
