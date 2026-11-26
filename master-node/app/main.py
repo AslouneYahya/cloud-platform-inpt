@@ -77,7 +77,9 @@ def run_script(script_name: str, args: list) -> Dict[str, str]:
     return data
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse)
 @app.get("/dashboard", response_class=HTMLResponse)
+@app.get("/dashboard/", response_class=HTMLResponse)
 def get_dashboard():
     """Serve live, responsive web dashboard for physical Master Node hardware and deployed VMs."""
     try:

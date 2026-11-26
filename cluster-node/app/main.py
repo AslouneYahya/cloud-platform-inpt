@@ -112,7 +112,9 @@ def get_health():
             active_vms=0
         )
 
+@app.get("/", response_class=HTMLResponse)
 @app.get("/dashboard", response_class=HTMLResponse)
+@app.get("/dashboard/", response_class=HTMLResponse)
 def get_dashboard():
     """Render unified web dashboard showing all cluster peers and hosted VMs."""
     try:
