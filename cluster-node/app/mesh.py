@@ -137,13 +137,45 @@ class PeerMesh:
             })
             return peer
 
+    def purge_stale_peers(self, max_stale_seconds: float = 180.0):
+        """Reap decommissioned dead nodes that have not sent heartbeats for over 3 minutes."""
+        now = datetime.now(timezone.utc)
+        to_purge = []
+        with self._lock:
+            for nid, peer in list(self.peers.items()):
+                last_hb_str = peer.get("last_heartbeat")
+                if last_hb_str:
+                    try:
+                        last_hb = datetime.fromisoformat(last_hb_str)
+                        if (now - last_hb).total_seconds() > max_stale_seconds:
+                            to_purge.append(nid)
+                    except Exception:
+                        pass
+            for nid in to_purge:
+                if nid in self.peers:
+                    del self.peers[nid]
+                    logger.info("Reaped stale decommissioned peer '%s' (idle > %ds)", nid, int(max_stale_seconds))
+            if to_purge:
+                self._save_to_disk()
+
     def merge_peers(self, remote_peers: Dict[str, dict]):
         """Gossip Synchronization: merge peer registry received from other cluster replicas."""
+        now = datetime.now(timezone.utc)
         with self._lock:
             changed = False
             for nid, rpeer in remote_peers.items():
                 if nid == self.node_id or not isinstance(rpeer, dict):
                     continue
+                # Do not accept or resurrect dead nodes inactive for > 3 minutes
+                r_hb_str = rpeer.get("last_heartbeat")
+                if r_hb_str:
+                    try:
+                        r_hb = datetime.fromisoformat(r_hb_str)
+                        if (now - r_hb).total_seconds() > 180.0:
+                            continue
+                    except Exception:
+                        pass
+
                 local_peer = self.peers.get(nid)
                 if not local_peer:
                     self.peers[nid] = rpeer
@@ -159,6 +191,7 @@ class PeerMesh:
 
     def get_all(self, local_health: Optional[dict] = None) -> List[dict]:
         """Return all nodes in the mesh (local node + all discovered peers)."""
+        self.purge_stale_peers()
         now = datetime.now(timezone.utc)
         result = []
 

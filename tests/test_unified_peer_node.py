@@ -167,12 +167,14 @@ class TestUnifiedPeerNode(unittest.TestCase):
 
     def test_gossip_merge_peers(self):
         """Gossip protocol merges remote peer table and updates fresher timestamps."""
+        from datetime import datetime, timezone, timedelta
+        now_str = datetime.now(timezone.utc).isoformat()
         remote_data = {
             "pi-node-delta": {
                 "node_id": "pi-node-delta",
                 "role": "PEER",
                 "status": "ONLINE",
-                "last_heartbeat": "2026-11-26T02:30:00+00:00",
+                "last_heartbeat": now_str,
                 "ram_used_mb": 500,
                 "ram_total_mb": 4000
             }
@@ -180,6 +182,19 @@ class TestUnifiedPeerNode(unittest.TestCase):
         self.peer_mesh.merge_peers(remote_data)
         self.assertIn("pi-node-delta", self.peer_mesh.peers)
         self.assertEqual(self.peer_mesh.peers["pi-node-delta"]["ram_used_mb"], 500)
+
+    def test_reap_stale_dead_nodes(self):
+        """Nodes inactive for > 180 seconds are automatically garbage collected."""
+        from datetime import datetime, timezone, timedelta
+        old_time = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        self.peer_mesh.peers["dead-node-99"] = {
+            "node_id": "dead-node-99",
+            "role": "PEER",
+            "last_heartbeat": old_time
+        }
+        self.assertIn("dead-node-99", self.peer_mesh.peers)
+        self.peer_mesh.purge_stale_peers()
+        self.assertNotIn("dead-node-99", self.peer_mesh.peers)
 
 if __name__ == "__main__":
     unittest.main()

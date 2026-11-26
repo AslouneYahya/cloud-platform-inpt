@@ -233,7 +233,7 @@ def render_dashboard_html(health: Dict[str, Any], vms: List[Dict[str, Any]], clu
             is_master = node.get("role") == "MASTER"
             is_online = node.get("status") == "ONLINE"
             n_id = node.get("node_id", "node")
-            display_name = n_id.replace("worker-", "node-")
+            display_name = n_id
             is_current_host = (n_id == current_host_id or node.get("hostname") == current_host_id or
                                (current_host_id.startswith("node-pi-") and n_id == current_host_id))
 
